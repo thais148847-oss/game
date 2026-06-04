@@ -187,7 +187,7 @@
         <!-- 4. SẢNH CHỜ (LOBBY) -->
         <div id="screen-lobby" class="screen">
             <h2 class="text-center">Sảnh Chờ</h2>
-            <p class="text-center">Số lượng người chơi: <span id="lobby-count">0</span>/60</p>
+            <p class="text-center">Số lượng người chơi: <span id="lobby-count">0</span>/200</p>
             <ul id="lobby-players-list" style="flex-grow: 1; overflow-y: auto;">
                 <!-- JS render danh sách bot và player -->
             </ul>
@@ -6128,6 +6128,2802 @@ console.log('[Giai đoạn 18] Khắc phục triệt để lỗi cộng dồn tr
     }, 100);
 
     console.log('[Giai đoạn 26] Vá triệt để lỗi âm máu, đồng bộ tối hậu trạng thái ĐÃ CHẾT lên bảng xếp hạng thành công.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 27
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, gameState, isCurrentRoomBoss, currentRoomCorrectIndex, generateRoom
+
+    // --- 1. TIÊM TOÀN BỘ CSS THIẾT KẾ ĐỒ HỌA ENGINE MÔ HÌNH NHÂN VẬT PURE CSS (CSS-BASED CHARACTER DESIGN ENGINE) ---
+    const vectorArtStyles = `
+        <style>
+            /* KHUNG CHỨA VÀ HIỆU ỨNG DI CHUYỂN HOẠT ẢNH IDLE / FLOAT / AURA */
+            .vector-monster-container {
+                position: relative;
+                width: 260px;
+                height: 420px;
+                margin: 0 auto 15px auto;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                transform-style: preserve-3d;
+                perspective: 600px;
+                transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+            .vector-monster-container.float-idle-active {
+                animation: float 3s ease-in-out infinite, idleRotate 4s ease-in-out infinite;
+            }
+
+            /* KHUNG NỀN HÀO QUANG RADIAL GRADIENT AURA THEO YÊU CẦU PROMPT */
+            .vector-monster-container::before {
+                content: "";
+                position: absolute;
+                width: 240px;
+                height: 240px;
+                background: radial-gradient(circle, var(--monster-aura, rgba(0,255,255,0.4)) 0%, transparent 70%);
+                border-radius: 50%;
+                left: 10px;
+                top: 40px;
+                filter: blur(25px);
+                z-index: -1;
+                transition: background 0.5s ease;
+            }
+
+            /* ĐỒ HỌA MÔ HÌNH CHIBI CƠ BẢN: BIG HEAD + SMALL BODY + BORDER DÀY CARTOON */
+            .v-head {
+                position: absolute;
+                width: 170px;
+                height: 150px;
+                border: 7px solid #111;
+                border-radius: 40%;
+                left: 45px;
+                top: 30px;
+                z-index: 6;
+                box-shadow: inset -12px -12px 24px rgba(0,0,0,0.4), inset 12px 12px 18px rgba(255,255,255,0.1);
+            }
+            .v-body {
+                position: absolute;
+                width: 110px;
+                height: 115px;
+                border: 7px solid #111;
+                left: 75px;
+                top: 170px;
+                z-index: 4;
+                box-shadow: inset -10px -10px 18px rgba(0,0,0,0.45), inset 8px 8px 12px rgba(255,255,255,0.08);
+            }
+
+            /* CẤU TRÚC PHỤ KIỆN ĐA DẠNG KHÔNG TRÙNG LẶP (DÙNG ĐỂ TÁCH BIỆT NGOÀI HÌNH 80% GIỮA 20 CHỦ THỂ) */
+            .v-horn-l, .v-horn-r {
+                position: absolute; width: 50px; height: 75px; border: 6px solid #111; border-radius: 50%; top: -30px; z-index: 2;
+            }
+            .v-horn-l { left: -15px; transform: rotate(-35deg); }
+            .v-horn-r { right: -15px; transform: rotate(35deg); }
+
+            .v-eye-l, .v-eye-r {
+                position: absolute; width: 34px; height: 26px; background: #fff; border: 4px solid #111; border-radius: 50%; top: 60px; z-index: 7;
+            }
+            .v-eye-l { left: 30px; } .v-eye-r { right: 30px; }
+            .v-pupil {
+                position: absolute; width: 14px; height: 14px; border-radius: 50%; top: 4px; left: 6px;
+                box-shadow: 0 0 14px var(--pupil-glow, #00f0ff);
+            }
+
+            .v-mouth {
+                position: absolute; border: 5px solid #111; border-radius: 50%; bottom: 25px; left: 65px; z-index: 7;
+            }
+            .v-helmet {
+                position: absolute; width: 184px; height: 80px; border: 7px solid #111; border-radius: 50% 50% 10px 10px; left: -7px; top: -15px; z-index: 8;
+            }
+            .v-armor {
+                position: absolute; width: 96px; height: 60px; border: 6px solid #111; border-radius: 8px; left: 1px; top: 15px;
+            }
+            .v-shoulder-l, .v-shoulder-r {
+                position: absolute; width: 45px; height: 45px; border: 5px solid #111; border-radius: 12px; top: -10px; z-index: 5;
+            }
+            .v-shoulder-l { left: -25px; } .v-shoulder-r { right: -25px; }
+            .v-belt {
+                position: absolute; width: 110px; height: 24px; border: 5px solid #111; bottom: 15px; left: -7px; z-index: 5;
+            }
+
+            /* CÁNH TAY VÀ ĐÔI CHÂN ĐỐI XỨNG */
+            .v-arm-l, .v-arm-r {
+                position: absolute; width: 40px; height: 95px; border: 6px solid #111; border-radius: 18px; top: 180px; z-index: 3;
+            }
+            .v-arm-l { left: 30px; transform: rotate(15deg); }
+            .v-arm-r { right: 30px; transform: rotate(-15deg); }
+
+            .v-leg-l, .v-leg-l-inner, .v-leg-r, .v-leg-r-inner {
+                position: absolute; width: 44px; height: 80px; border: 6px solid #111; border-radius: 16px; top: 275px; z-index: 3;
+            }
+            .v-leg-l { left: 75px; } .v-leg-r { right: 75px; }
+
+            /* THIẾT KẾ CÁC LOẠI VŨ KHÍ NGUYÊN BẢN THEO ĐỀ BÀI (PÙ HỢP HOÀN TOÀN CARTOON STYLE) */
+            .v-weapon-container {
+                position: absolute; width: 120px; height: 160px; top: 130px; right: -40px; z-index: 9; transform-origin: left bottom;
+            }
+            .weapon-mesh { position: relative; width: 100%; height: 100%; }
+
+            /* 1. Đao / Kiếm */
+            .mesh-blade { position: absolute; width: 22px; height: 110px; border: 5px solid #111; border-radius: 10px 10px 4px 4px; left: 10px; top: 10px; }
+            .mesh-hilt { position: absolute; width: 12px; height: 35px; background: #78350f; border: 4px solid #111; left: 15px; bottom: 10px; }
+            .mesh-guard { position: absolute; width: 44px; height: 12px; background: #f59e0b; border: 4px solid #111; left: -1px; bottom: 42px; border-radius: 4px; }
+            /* 2. Súng */
+            .mesh-barrel { position: absolute; width: 65px; height: 20px; background: #475569; border: 5px solid #111; left: 20px; top: 40px; border-radius: 4px; }
+            .mesh-grip { position: absolute; width: 18px; height: 40px; background: #1e293b; border: 5px solid #111; left: 15px; top: 50px; transform: rotate(-15deg); border-radius: 4px; }
+            /* 3. Thương */
+            .mesh-shaft { position: absolute; width: 10px; height: 150px; background: #b45309; border: 4px solid #111; left: 25px; top: 0; }
+            .mesh-spearhead { position: absolute; width: 26px; height: 40px; background: #cbd5e1; border: 5px solid #111; left: 17px; top: -35px; border-radius: 50% 50% 0 0; }
+            /* 4. Nỏ */
+            .mesh-crossbow-body { position: absolute; width: 14px; height: 90px; background: #78350f; border: 4px solid #111; left: 25px; top: 20px; }
+            .mesh-crossbow-bow { position: absolute; width: 85px; height: 14px; background: #475569; border: 4px solid #111; left: -10px; top: 35px; border-radius: 50%; }
+            /* 5. Chùy / Đinh Ba */
+            .mesh-mace-head { position: absolute; width: 50px; height: 50px; background: #334155; border: 5px solid #111; border-radius: 50%; left: 5px; top: 10px; }
+            .mesh-trident-fork1 { position: absolute; width: 8px; height: 45px; background: #e2e8f0; border: 4px solid #111; left: 10px; top: -20px; }
+            .mesh-trident-fork2 { position: absolute; width: 8px; height: 60px; background: #e2e8f0; border: 4px solid #111; left: 26px; top: -35px; }
+            .mesh-trident-fork3 { position: absolute; width: 8px; height: 45px; background: #e2e8f0; border: 4px solid #111; left: 42px; top: -20px; }
+            /* 6. Lựu đạn */
+            .mesh-grenade-body { position: absolute; width: 44px; height: 55px; background: #166534; border: 5px solid #111; border-radius: 15px; left: 15px; top: 40px; }
+            .mesh-grenade-pin { position: absolute; width: 16px; height: 16px; border: 4px solid #111; border-radius: 50%; left: 29px; top: 22px; }
+
+            /* ĐỒ HỌA ĐẾ BÓNG ĐỔ KHÔNG GIAN (DYNAMIC BLUR SHADOW) */
+            .v-shadow {
+                position: absolute; width: 160px; height: 35px; background: rgba(0,0,0,0.5); bottom: 5px; left: 50px; border-radius: 50%; filter: blur(8px); z-index: 1;
+            }
+            .vector-monster-container.float-idle-active .v-shadow {
+                animation: shadow 3s ease-in-out infinite;
+            }
+
+            /* HOẠT ẢNH BẬT NHẢY VÀ ĐIỀU BIẾN TỶ LỆ */
+            @keyframes idleRotate {
+                0% { transform: rotate(-2deg); }
+                50% { transform: rotate(2deg); }
+                100% { transform: rotate(-2deg); }
+            }
+        </style>
+    `;
+    document.head.insertAdjacentHTML("beforeend", vectorArtStyles);
+
+    // --- 2. CẤU HÌNH THƯ VIỆN DỮ LIỆU ĐỒ HỌA 20 CHỦ THỂ QUÁI VẬT VÀ BOSS ĐỘC QUYỀN (DIFFERENTIATION > 80%) ---
+    // Thiết lập 2 màu chủ đạo (2 COLOR MAIN), 1 tính năng độc bản (1 UNIQUE FEATURE), Khối tối giản (SIMPLE SHAPE)
+    const vectorMonsterDatabase = [
+        { name: "Tiểu Quỷ Sừng Băng", c1: "#2563eb", c2: "#1e3a8a", eye: "#00f0ff", aura: "rgba(0,240,255,0.4)", horn: true, hornColor: "#22d3ee", helmet: false, mouth: "width:30px; height:15px; background:#111; border-radius: 0 0 15px 15px;", weapon: "blade", unique: "horn-frost" },
+        { name: "Hắc Binh Đội Mũ", c1: "#374151", c2: "#111827", eye: "#ef4444", aura: "rgba(239,68,68,0.3)", horn: false, helmet: true, helmetColor: "#4b5563", mouth: "width:40px; height:6px; background:#111;", weapon: "pistol", unique: "iron-helm" },
+        { name: "Yêu Tinh Sát Thủ", c1: "#16a34a", c2: "#14532d", eye: "#eab308", aura: "rgba(234,179,8,0.3)", horn: false, helmet: false, shoulderColor: "#15803d", mouth: "width:20px; height:20px; background:#111; border-radius:50%;", weapon: "blade", unique: "green-scout" },
+        { name: "Giáp Sĩ Hoàng Kim", c1: "#d97706", c2: "#78350f", eye: "#fff", aura: "rgba(217,119,6,0.4)", horn: true, hornColor: "#f59e0b", helmet: true, helmetColor: "#b45309", mouth: "width:35px; height:10px; background:#111; border-radius:4px;", weapon: "spear", unique: "golden-guard" },
+        { name: "Thợ Săn Bộ Lạc", c1: "#ea580c", c2: "#7c2d12", eye: "#22c55e", aura: "rgba(34,197,94,0.3)", horn: true, hornColor: "#fdba74", helmet: false, mouth: "width:25px; height:8px; background:#111; border-radius:50%;", weapon: "crossbow", unique: "tribal-mask" },
+        { name: "Cơ Giáp Tàn Bạo", c1: "#4b5563", c2: "#1f2937", eye: "#c084fc", aura: "rgba(192,132,252,0.4)", horn: false, helmet: true, helmetColor: "#374151", mouth: "width:40px; height:12px; background:#ef4444; border-radius:2px;", weapon: "pistol", unique: "neon-visor" },
+        { name: "Kẻ Nguyền Rủa", c1: "#7c3aed", c2: "#4c1d95", eye: "#f43f5e", aura: "rgba(244,63,94,0.4)", horn: true, hornColor: "#a78bfa", helmet: false, mouth: "width:30px; height:15px; border-bottom: 6px solid #111; border-radius:50%;", weapon: "mace", unique: "void-touched" },
+        { name: "Đại Đội Trưởng Orc", c1: "#047857", c2: "#064e3b", eye: "#f97316", aura: "rgba(249,115,22,0.3)", horn: true, hornColor: "#34d399", helmet: true, helmetColor: "#065f46", mouth: "width:44px; height:20px; background:#111; border-radius:6px;", weapon: "trident", unique: "heavy-tusks" },
+        { name: "Lính Đánh Thuê Biển", c1: "#0284c7", c2: "#0c4a6e", eye: "#38bdf8", aura: "rgba(56,189,248,0.3)", horn: false, helmet: false, mouth: "width:32px; height:5px; background:#111;", weapon: "trident", unique: "deep-diver" },
+        { name: "Kẻ Kích Nổ Cuồng Loạn", c1: "#dc2626", c2: "#7f1d1d", eye: "#eab308", aura: "rgba(255,0,0,0.5)", horn: false, helmet: true, helmetColor: "#991b1b", mouth: "width:36px; height:16px; background:#111; border-radius:50% 50% 0 0;", weapon: "grenade", unique: "bomber-goggles" },
+        { name: "Hiệp Sĩ Tro Tàn", c1: "#4b5563", c2: "#1f2937", eye: "#f43f5e", aura: "rgba(244,63,94,0.3)", horn: true, hornColor: "#9ca3af", helmet: true, helmetColor: "#111827", mouth: "width:30px; height:4px; background:#111;", weapon: "blade", unique: "ash-plate" },
+        { name: "Tinh Linh Rừng Sâu", c1: "#059669", c2: "#022c22", eye: "#67e8f9", aura: "rgba(6,182,212,0.4)", horn: true, hornColor: "#6ee7b7", helmet: false, mouth: "width:22px; height:10px; background:#111; border-radius:50%;", weapon: "crossbow", unique: "leaf-ears" },
+        { name: "Sát Thủ Sa Mạc", c1: "#ca8a04", c2: "#451a03", eye: "#f43f5e", aura: "rgba(234,179,8,0.3)", horn: false, helmet: true, helmetColor: "#854d0e", mouth: "width:28px; height:4px; background:#111;", weapon: "blade", unique: "sand-shroud" },
+        { name: "Kẻ Trộm Bóng Tối", c1: "#1e1b4b", c2: "#311042", eye: "#a855f7", aura: "rgba(168,85,247,0.4)", horn: true, hornColor: "#4c1d95", helmet: false, mouth: "width:30px; height:12px; background:#111; border-radius:0 0 10px 10px;", weapon: "blade", unique: "shadow-cloak" },
+        { name: "Chiến Binh Đầm Lầy", c1: "#15803d", c2: "#14532d", eye: "#f59e0b", aura: "rgba(21,128,61,0.3)", horn: false, helmet: false, mouth: "width:34px; height:14px; background:#111; border-radius:4px;", weapon: "spear", unique: "moss-skin" },
+        // DÀN BOSS SIÊU CẤP (16 - 20): KÍCH THƯỚC ĐỒ SỘ, PHỤ KIỆN PHỨC TẠP
+        { name: "👹 CHÚA TỂ ĐẠI NGỤC (BOSS)", c1: "#991b1b", c2: "#450a0a", eye: "#ff0000", aura: "rgba(255,0,0,0.7)", horn: true, hornColor: "#111827", helmet: true, helmetColor: "#7f1d1d", mouth: "width:50px; height:25px; background:#111; border-radius:6px; border-top: 5px solid #ef4444;", weapon: "blade", unique: "hell-lord" },
+        { name: "⚡ THẦN CƠ ĐẾ QUỐC (BOSS)", c1: "#2563eb", c2: "#1e3a8a", eye: "#00f0ff", aura: "rgba(0,240,255,0.7)", horn: false, helmet: true, helmetColor: "#0f172a", mouth: "width:60px; height:10px; background:#00f0ff;", weapon: "pistol", unique: "cyber-god" },
+        { name: "🐉 CỔ LONG BĂNG GIÁ (BOSS)", c1: "#0891b2", c2: "#164e63", eye: "#fff", aura: "rgba(34,211,238,0.6)", horn: true, hornColor: "#cffafe", helmet: false, mouth: "width:45px; height:22px; background:#111; border-radius:0 0 20px 20px;", weapon: "spear", unique: "frost-dragon" },
+        { name: "🔮 PHÙ THỦY HƯ KHÔNG (BOSS)", c1: "#6d28d9", c2: "#2e1065", eye: "#f43f5e", aura: "rgba(168,85,247,0.7)", horn: true, hornColor: "#c084fc", helmet: true, helmetColor: "#4c1d95", mouth: "width:40px; height:15px; background:#111; border-radius:50%;", weapon: "trident", unique: "void-emperor" },
+        { name: "💥 KHỔNG LỒ DIỆT THẾ (BOSS)", c1: "#ea580c", c2: "#431407", eye: "#fbbf24", aura: "rgba(234,88,12,0.8)", horn: true, hornColor: "#7c2d12", helmet: true, helmetColor: "#111827", mouth: "width:55px; height:25px; background:#111; border-radius:4px;", weapon: "mace", unique: "world-breaker" }
+    ];
+
+    // --- 3. ENGINE KẾT XUẤT NHÂN VẬT VECTOR ART BẰNG HTML DOM (HTML/CSS ART RENDERING INTERFACE) ---
+    window.renderVectorCharacterHTML = function(index, isBoss) {
+        // Đảm bảo chỉ số nằm trong giới hạn mảng dữ liệu cấu hình 20 con quái vật
+        let cfg = vectorMonsterDatabase[index % vectorMonsterDatabase.length];
+        
+        // Nếu là Boss, ép lấy dữ liệu từ dàn Boss tối thượng (chỉ mục 15 - 19) để gia tăng độ nguy hiểm
+        if (isBoss) {
+            cfg = vectorMonsterDatabase[15 + (index % 5)];
+        }
+
+        // Khởi tạo các chuỗi nhánh HTML phụ thuộc dựa trên Unique Config của từng con
+        let hornHTML = cfg.horn ? `
+            <div class="v-horn-l" style="background: linear-gradient(${cfg.hornColor}, ${cfg.c2});"></div>
+            <div class="v-horn-r" style="background: linear-gradient(${cfg.hornColor}, ${cfg.c2});"></div>
+        ` : '';
+        
+        let helmetHTML = cfg.helmet ? `
+            <div class="v-helmet" style="background: linear-gradient(145deg, ${cfg.helmetColor}, #111);"></div>
+        ` : '';
+
+        let shoulderColor = cfg.shoulderColor || cfg.c2;
+        let beltColor = cfg.helmetColor || "#78350f";
+
+        // Sinh mã dựng hình Vũ khí ngẫu nhiên/cố định chuẩn chỉ cartoon style hình khối
+        let weaponHTML = '';
+        if (cfg.weapon === 'blade') {
+            weaponHTML = `<div class="mesh-blade" style="background: linear-gradient(#cbd5e1, #64748b);"></div><div class="mesh-guard"></div><div class="mesh-hilt"></div>`;
+        } else if (cfg.weapon === 'pistol') {
+            weaponHTML = `<div class="mesh-barrel"></div><div class="mesh-grip"></div>`;
+        } else if (cfg.weapon === 'spear') {
+            weaponHTML = `<div class="mesh-shaft"></div><div class="mesh-spearhead"></div>`;
+        } else if (cfg.weapon === 'crossbow') {
+            weaponHTML = `<div class="mesh-crossbow-body"></div><div class="mesh-crossbow-bow"></div>`;
+        } else if (cfg.weapon === 'mace') {
+            weaponHTML = `<div class="mesh-shaft" style="height:120px; top:30px;"></div><div class="mesh-mace-head"></div>`;
+        } else if (cfg.weapon === 'trident') {
+            weaponHTML = `<div class="mesh-shaft"></div><div class="mesh-trident-fork1"></div><div class="mesh-trident-fork2"></div><div class="mesh-trident-fork3"></div>`;
+        } else if (cfg.weapon === 'grenade') {
+            weaponHTML = `<div class="mesh-grenade-body"></div><div class="mesh-grenade-pin"></div>`;
+        }
+
+        // Tích hợp biến đổi CSS Variables động cho khối Hào quang Aura và Ánh mắt Glow rực lửa tinh anh
+        let bossScaleStyle = isBoss ? 'transform: scale(1.2);' : '';
+
+        return `
+            <div class="vector-monster-container float-idle-active" id="vector-avatar-mesh" style="--monster-aura: ${cfg.aura}; --pupil-glow: ${cfg.eye}; ${bossScaleStyle}">
+                <div class="v-head" style="background: linear-gradient(145deg, ${cfg.c1}, ${cfg.c2});">
+                    ${hornHTML}
+                    ${helmetHTML}
+                    <div class="v-eye-l"><div class="v-pupil" style="background: ${cfg.eye};"></div></div>
+                    <div class="v-eye-r"><div class="v-pupil" style="background: ${cfg.eye};"></div></div>
+                    <div class="v-mouth" style="${cfg.mouth}"></div>
+                </div>
+
+                <div class="v-body" style="background: linear-gradient(145deg, ${cfg.c1}, ${cfg.c2});">
+                    <div class="v-armor" style="background: ${cfg.c2}; border-color: #111;"></div>
+                    <div class="v-shoulder-l" style="background: ${shoulderColor};"></div>
+                    <div class="v-shoulder-r" style="background: ${shoulderColor};"></div>
+                    <div class="v-belt" style="background: ${beltColor};"></div>
+                </div>
+
+                <div class="v-arm-l" style="background: linear-gradient(${cfg.c1}, ${cfg.c2});"></div>
+                <div class="v-arm-r" style="background: linear-gradient(${cfg.c1}, ${cfg.c2});"></div>
+
+                <div class="v-leg-l" style="background: linear-gradient(${cfg.c1}, ${cfg.c2});"></div>
+                <div class="v-leg-r" style="background: linear-gradient(${cfg.c1}, ${cfg.c2});"></div>
+
+                <div class="v-weapon-container">
+                    <div class="weapon-mesh">${weaponHTML}</div>
+                </div>
+
+                <div class="v-shadow"></div>
+            </div>
+        `;
+    };
+
+    // --- 4. GHI ĐÈ LUỒNG LOAD PHÒNG IN-GAME ĐỂ INJECT MÔ HÌNH CSS VECTOR THAY CHO LỚP ẢNH CŨ ---
+    window.generateRoom = function() {
+        if (playerState.hp <= 0 || gameState.timer <= 0) return;
+
+        // Định đoạt thuộc tính phòng Boss hay quái thường
+        isCurrentRoomBoss = (playerState.roomCount % 10 === 0) || (playerState.bossRoomsRemaining > 0);
+        
+        let enemyNameUI = document.getElementById('ui-enemy-name');
+        let enemyImgUI = document.getElementById('ui-enemy-img');
+        
+        // Ẩn hoàn toàn thẻ ảnh img cũ bị nhàm chán lỗi thời
+        if (enemyImgUI) enemyImgUI.classList.add('hidden');
+
+        // Gỡ bỏ khung chứa mô hình cũ nếu tồn tại để nạp thực thể phòng mới sạch sẽ
+        let oldMesh = document.getElementById('vector-avatar-mesh');
+        if (oldMesh) oldMesh.remove();
+
+        // Xác định thực thể quái vật tương ứng trong danh sách 20 con dựa vào số phòng hiện tại
+        let currentMonsterIndex = playerState.roomCount - 1;
+        let monsterCfg = vectorMonsterDatabase[currentMonsterIndex % vectorMonsterDatabase.length];
+        if (isCurrentRoomBoss) {
+            monsterCfg = vectorMonsterDatabase[15 + (currentMonsterIndex % 5)];
+        }
+
+        // Thiết lập tiêu đề tên nhập vai
+        enemyNameUI.innerText = monsterCfg.name;
+        if (isCurrentRoomBoss) {
+            enemyNameUI.style.color = "var(--btn-danger)";
+            if (playerState.bossRoomsRemaining > 0) playerState.bossRoomsRemaining--;
+        } else {
+            enemyNameUI.style.color = "#fbbf24";
+        }
+
+        // KÍCH HOẠT TIÊM ĐỘNG MÔ HÌNH MỚI XUẤT BẢN NGAY SAU TIÊU ĐỀ TÊN
+        let renderHTML = window.renderVectorCharacterHTML(currentMonsterIndex, isCurrentRoomBoss);
+        enemyNameUI.insertAdjacentHTML('afterend', renderHTML);
+
+        // Khởi động nạp hệ thống câu hỏi
+        let sourcePool = questionBank;
+        if (playerState.failedQuestions.length > 0 && Math.random() < 0.2) {
+            sourcePool = playerState.failedQuestions;
+        }
+        if (sourcePool.length === 0) sourcePool = questionBank; 
+
+        activeQuestion = sourcePool[Math.floor(Math.random() * sourcePool.length)];
+
+        renderQuestion(activeQuestion);
+        roomStartTime = Date.now(); 
+        renderUIState();
+    };
+
+
+    // --- 5. TÍCH HỢP HIỆU ỨNG TRÚNG ĐÒN KHẨN CẤP (HIT EFFECT TRANSFORM PACK) KHI TRẢ LỜI SAI ---
+    const oldHandleAnswer = window.handleAnswer;
+    window.handleAnswer = function(selectedIndex) {
+        let isCorrect = (selectedIndex === (typeof currentRoomCorrectIndex !== 'undefined' ? currentRoomCorrectIndex : activeQuestion.correctIndex));
+        
+        // Nếu trả lời sai, kích hoạt ngay lập tức hoạt ảnh biến đổi chớp nhoáng theo yêu cầu prompt đề bài
+        if (!isCorrect) {
+            let characterMeshDOM = document.getElementById('vector-avatar-mesh');
+            if (characterMeshDOM) {
+                // Tắt tạm hoạt ảnh cuộn idle để tránh xung đột ma trận transform hình học
+                characterMeshDOM.classList.remove('float-idle-active');
+                
+                // Tiêm hiệu ứng trúng đòn khẩn cấp dứt khoát
+                characterMeshDOM.style.transform = "scale(0.9) rotate(-5deg)";
+
+                setTimeout(() => {
+                    if (characterMeshDOM) {
+                        characterMeshDOM.style.transform = "scale(1)";
+                        // Tái kích hoạt lại mạch hoạt ảnh lơ lửng sống động bình thường
+                        characterMeshDOM.classList.add('float-idle-active');
+                    }
+                }, 100);
+            }
+        }
+
+        // Chuyển giao tiếp tục luồng xử lý cốt lõi của lõi game gốc
+        if (typeof oldHandleAnswer === 'function') {
+            oldHandleAnswer(selectedIndex);
+        }
+    };
+
+    console.log('[Giai đoạn 27] Nâng cấp toàn diện Đồ họa 20 mẫu quái/boss Pure CSS vector art, cấu trúc Big Head, Aura nền, và hiệu ứng Hit Transform thành công.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 28
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, characterDefs, equipmentDefs, applyBuffTick, deliverPurchasedItem
+
+    // --- 1. SỬA ĐỔI CHỈ SỐ MÁU KHỞI ĐẦU VÀ CHÚ THÍCH NỘI TẠI CỦA BẢO VỆ THÀNH 2500 HP KỊCH TRẦN ---
+    if (typeof characterDefs !== 'undefined' && characterDefs.guard) {
+        characterDefs.guard.baseHp = 2500;
+        characterDefs.guard.desc = 'Nội tại: Cộng thêm 1000 máu khởi đầu (Tổng 2500 HP).';
+    }
+
+    // Tái tạo lại lập tức giao diện chọn nhân vật tại sảnh chờ để cập nhật nội dung văn bản mới
+    if (typeof renderCharacterSelectionUI === 'function') {
+        renderCharacterSelectionUI();
+    }
+
+
+    // --- 2. HIỆU ỨNG TƯƠNG TÁC ĐẶC BIỆT KHI BẢO VỆ NHẬN ĐƯỢC TRÁI TIM BIỂN CẢ TỪ CLAN ---
+    const oldDeliverPurchasedItem = window.deliverPurchasedItem;
+    window.deliverPurchasedItem = function(itemId) {
+        if (itemId === 'ocean_heart' && playerState.character === 'guard') {
+            alert("🛡️ [LIÊN MINH BẢO VỆ]: Chúc mừng bạn nhận được trang bị trấn phái do clan của bạn, khả năng hồi phục của trang bị sẽ tăng lên!");
+        }
+        if (typeof oldDeliverPurchasedItem === 'function') {
+            oldDeliverPurchasedItem(itemId);
+        }
+    };
+
+
+    // --- 3. GHI ĐÈ TIẾN TRÌNH DUY TRÌ THEO VÒNG ĐỂ TĂNG 100% HIỆU LỰC HỒI MÁU (GẤP ĐÔI) CHO BẢO VỆ ---
+    window.applyBuffTick = function() {
+        if (playerState.gambleCooldown > 0) playerState.gambleCooldown--;
+
+        // Khấu trừ số phòng duy trì của các trạng thái Buff tạm thời
+        playerState.activeBuffs.forEach(buff => buff.roomsLeft--);
+        let expiredBuffs = playerState.activeBuffs.filter(b => b.roomsLeft <= 0);
+        playerState.activeBuffs = playerState.activeBuffs.filter(b => b.roomsLeft > 0);
+
+        // Giải phóng cổ vật hết thời gian duy trì ra khỏi kho đồ
+        expiredBuffs.forEach(expired => {
+            let itemIndex = playerState.equipments.indexOf(expired.id);
+            if (itemIndex !== -1) {
+                playerState.equipments.splice(itemIndex, 1);
+            }
+        });
+
+        // XỬ LÝ HỒI MÁU: Kiểm tra số lượng Trái Tim Biển Cả và nhân đôi hiệu quả hồi phục nếu là Bảo Vệ
+        let oceanHeartCount = playerState.equipments.filter(id => id === 'ocean_heart').length;
+        if (oceanHeartCount > 0) {
+            let healMultiplier = (playerState.character === 'guard') ? 2 : 1; // Bảo vệ tăng 100% hiệu ứng (Hồi gấp đôi = 60 HP/phòng cho mỗi tim)
+            playerState.hp += oceanHeartCount * 30 * healMultiplier;
+        }
+
+        if (typeof updateStatusBarUI === 'function') {
+            updateStatusBarUI();
+        }
+    };
+
+
+    // --- 4. GIÁM SÁT BIẾN ĐỘNG DOM GIAO DIỆN SỰ KIỆN: HIỆN THÔNG BÁO BÍ MẬT CLAN CHO CON BẠC ---
+    const clanRewardObserver = new MutationObserver((mutations) => {
+        let panel = document.getElementById('sub-event-content');
+        // Kiểm tra xem màn hình phụ đã nạp thành công Máy Đánh Bạc Cổ Đại lên giao diện chưa
+        if (panel && panel.innerText.includes('Máy Đánh Bạc Cổ Đại')) {
+            if (playerState.character === 'gambler' && !panel._hasAlertedGamblerClanSecretEvent) {
+                panel._hasAlertedGamblerClanSecretEvent = true; // Đánh dấu cờ chống lặp lại hộp thoại thông báo
+                alert("🎰 [LIÊN MINH CON BẠC]: Chúc mừng bạn gặp được sự kiện bí mật nhờ vào clan của bạn, bạn có thể dùng kĩ năng để nhận nhiều quà hơn!");
+            }
+        }
+    });
+
+    // Định kỳ thiết lập neo cổng giám sát lên khung cấu trúc lớp phủ sự kiện Boss tối hậu
+    setInterval(() => {
+        let overlay = document.getElementById('boss-reward-overlay');
+        if (overlay && !overlay._observedByPhase28) {
+            overlay._observedByPhase28 = true;
+            clanRewardObserver.observe(overlay, { childList: true, subtree: true });
+        }
+    }, 500);
+
+    console.log('[Giai đoạn 28] Tích hợp thành công điều chỉnh 2500 HP Bảo Vệ, nhân đôi phục hồi Trái Tim Biển Cả và nạp chuỗi tương tác thông điệp bí mật Clan.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 29
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, gameState, characterDefs, equipmentDefs, isCurrentRoomBoss, renderUIState, generateRoom
+
+    // --- 1. CẬP NHẬT CHÚ THÍCH NỘI TẠI CLAN CHO CÁC NHÂN VẬT ---
+    if (typeof characterDefs !== 'undefined') {
+        if (characterDefs.fool) {
+            characterDefs.fool.desc = 'Nội tại: Luôn loại 1 đáp án sai. Clan hỗ trợ: Có 10% cơ hội hồi sinh với 1 máu khi cạn HP.';
+        }
+        if (characterDefs.scholar) {
+            characterDefs.scholar.desc = 'Nội tại: Nhân đôi số điểm khi lọt Top 10. Clan hỗ trợ: Có 60% cơ hội mua vật phẩm giảm giá gấp 3 tại Gian Thương.';
+        }
+    }
+    
+    // Làm mới lập tức giao diện chọn nhân vật nếu đang ở màn hình chính
+    if (typeof renderCharacterSelectionUI === 'function') {
+        renderCharacterSelectionUI();
+    }
+
+    // --- 2. VÁ LẠI LUỒNG KẾT THÚC GAME: TÍCH HỢP NỘI TẠI ẨN HỒI SINH (10%) CHO GÃ KHỜ ---
+    const oldEndGame = window.endGame;
+    window.endGame = function() {
+        // Kiểm tra điều kiện kích hoạt cơ hội hồi sinh ẩn của Gã Khờ
+        if (playerState.hp <= 0 && playerState.character === 'fool') {
+            if (Math.random() < 0.10) {
+                playerState.hp = 1; // Hồi sinh với đúng 1 máu kịch tính
+                alert("✨ [LIÊN MINH GÃ KHỜ]: Chúc mừng bạn nhận được cơ hội hồi sinh do clan của bạn, thánh nhân đãi kẻ khù khờ!");
+                
+                // Khôi phục trạng thái chơi, kéo người chơi quay lại trận đấu
+                gameState.status = 'PLAYING';
+                window.renderUIState();
+                window.changeScreen('screen-game');
+                
+                // Tiếp tục tạo lập phòng chơi thường/boss kế tiếp thay vì đóng băng luồng game
+                if (typeof generateRoom === 'function') {
+                    generateRoom();
+                }
+                return; // Ngắt hoàn toàn chuỗi xử lý kết thúc game (Hủy cuộc gọi tử nạn)
+            }
+        }
+
+        // Nếu không kích hoạt hồi sinh, tiếp tục chạy chu kỳ tử nạn mặc định
+        if (typeof oldEndGame === 'function') {
+            oldEndGame();
+        }
+    };
+
+    // --- 3. GHI ĐÈ TOÀN DIỆN MÀN HÌNH PHẦN THƯỞNG BOSS: TÍCH HỢP 60% GIẢM GIÁ GẤP 3 CHO HỌC BÁ ---
+    window.handleBossDefeat = function() {
+        playerState.isChoosingReward = true; 
+        
+        let appFrame = document.getElementById('app');
+        let oldOverlay = document.getElementById('boss-reward-overlay');
+        if (oldOverlay) oldOverlay.remove();
+
+        let rewardOverlay = document.createElement('div');
+        rewardOverlay.id = 'boss-reward-overlay';
+        appFrame.appendChild(rewardOverlay);
+
+        const totalPool = [
+            { id: 'chest', name: 'Rương Cổ Đại', icon: '🎁', desc: 'Rơi ngẫu nhiên vật phẩm cổ vật quý hiếm bổ trợ.' },
+            { id: 'merchant', name: 'Gian Thương Bí Ẩn', icon: '🧙‍♂️', desc: 'Sử dụng điểm hoặc máu để giao dịch bảo vật tăng trưởng.' },
+            { id: 'gambling', name: 'Vòng Quay May Rủi', icon: '🎰', desc: 'Thử thách vận mệnh nhân điểm thưởng hoặc mất sạch.' }
+        ];
+
+        let selectedEvents = [];
+        if (playerState.isGamblingCheatTriggered) {
+            let gamblingEvent = totalPool.find(e => e.id === 'gambling');
+            let remainingPool = totalPool.filter(e => e.id !== 'gambling').sort(() => Math.random() - 0.5);
+            selectedEvents = [gamblingEvent, remainingPool[0]];
+        } else {
+            selectedEvents = totalPool.sort(() => Math.random() - 0.5).slice(0, 2);
+        }
+
+        rewardOverlay.innerHTML = `
+            <div class="reward-title">🐉 Chiến Thắng Boss Tối Hậu 🐉</div>
+            <div class="reward-subtitle">Lựa chọn 1 trong 2 cơ duyên định mệnh xuất hiện dưới đây:</div>
+            <div class="choices-container" id="events-choice-row"></div>
+        `;
+
+        let row = document.getElementById('events-choice-row');
+        selectedEvents.forEach(ev => {
+            let card = document.createElement('div');
+            card.className = 'choice-card';
+            card.innerHTML = `
+                <div class="choice-icon">${ev.icon}</div>
+                <h3 style="color: #fbbf24; margin: 5px 0;">${ev.name}</h3>
+                <p style="font-size: 13px; color: #cbd5e1; margin-top: 10px;">${ev.desc}</p>
+            `;
+            card.addEventListener('click', () => {
+                executeChosenEvent(ev.id);
+            });
+            row.appendChild(card);
+        });
+
+        function executeChosenEvent(eventId) {
+            let overlay = document.getElementById('boss-reward-overlay');
+            if (!overlay) return;
+
+            overlay.innerHTML = `<div class="sub-event-panel" id="sub-event-content"></div>`;
+            let panel = document.getElementById('sub-event-content');
+
+            // === PHÂN NHÁNH 1: RƯƠNG CỔ ĐẠI ===
+            if (eventId === 'chest') {
+                const eqKeys = Object.keys(equipmentDefs);
+                let droppedItemsText = [];
+                let loops = (playerState.character === 'madman') ? 2 : 1;
+                
+                for (let l = 0; l < loops; l++) {
+                    let droppedKey = eqKeys[Math.floor(Math.random() * eqKeys.length)];
+                    let eq = equipmentDefs[droppedKey];
+                    window.deliverPurchasedItem(eq.id);
+                    if (eq.id === 'fishing_rod') playerState.bossRoomsRemaining += 5;
+                    droppedItemsText.push(`<span style="color: #fbbf24;">[${eq.name}]</span>`);
+                }
+
+                panel.innerHTML = `
+                    <div class="choice-icon">🎁</div>
+                    <h2 style="color: #10b981; margin: 5px 0;">Nhận Được Trang Bị ${playerState.character === 'madman' ? 'x2 (Gã Điên)' : ''}</h2>
+                    <div style="margin: 15px 0; text-align: center;">
+                        <strong style="font-size: 18px;">${droppedItemsText.join(" & ")}</strong><br>
+                        <p style="color: #cbd5e1; font-size: 14px; margin-top: 8px;">Vật phẩm thần thoại đã tự động rơi vào túi đồ!</p>
+                    </div>
+                    <button id="btn-close-reward" style="width: 100%;">Tiếp Tục Cuộc Hành Trình</button>
+                `;
+                document.getElementById('btn-close-reward').addEventListener('click', exitRewardPhase);
+
+            // === PHÂN NHÁNH 2: GIAN THƯƠNG BÍ ẨN (TÍCH HỢP TƯƠNG TÁC HỌC BÁ) ===
+            } else if (eventId === 'merchant') {
+                const shopPool = ['short_sword', 'pistol', 'ocean_heart', 'lucky_star'];
+                let randomItemKey = shopPool[Math.floor(Math.random() * shopPool.length)];
+                let hasBoughtWithPoints = false;
+
+                function renderShopUI() {
+                    let soldItem = equipmentDefs[randomItemKey];
+                    let pointCost = Math.floor(playerState.score * 0.4);
+
+                    panel.innerHTML = `
+                        <div class="choice-icon">🧙‍♂️</div>
+                        <h2 style="color: #e94560; margin: 5px 0;">Gian Thương Bí Ẩn</h2>
+                        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 15px; text-align:center;">
+                            ${playerState.character === 'madman' ? '🔥 Ưu đãi GÃ ĐIÊN: Mua 1 giá nhận về 2 món đồ giống nhau!' : 'Hàng hóa tự động xoay tua ngẫu nhiên sau mỗi lần mua.'}
+                        </p>
+                        <div class="merchant-item-box">
+                            <strong style="color: #fbbf24; font-size: 16px;">💎 Vật Phẩm: ${soldItem.name}</strong><br>
+                            <span style="font-size: 13px; color: #cbd5e1;">${soldItem.desc}</span>
+                        </div>
+                        <div style="width: 100%; margin-bottom: 10px; font-size: 12px; color: #cbd5e1; display:flex; justify-content: space-between;">
+                            <span>Máu: ❤️${playerState.hp}</span>
+                            <span>Điểm: ⭐${playerState.score}</span>
+                        </div>
+                        <button class="shop-btn" id="btn-shop-hp" style="background-color: #d90429;">❤️ Mua bằng Máu (Nhiều lần)</button>
+                        <button class="shop-btn" id="btn-shop-pts" style="background-color: #0f3460;" ${hasBoughtWithPoints ? 'disabled' : ''}>⭐ Mua bằng Điểm (Chỉ 1 lần)</button>
+                        <button class="shop-btn" id="btn-shop-leave" style="background-color: #475569; margin-top: 15px;">Rời Khỏi Cửa Hàng</button>
+                    `;
+
+                    // Xử lý mua bằng MÁU kèm cơ chế xúc xắc Giảm giá Clan 60% cho Học Bá
+                    document.getElementById('btn-shop-hp').addEventListener('click', () => {
+                        let finalHpCost = 800;
+                        if (playerState.character === 'scholar' && Math.random() < 0.60) {
+                            finalHpCost = Math.floor(800 / 3);
+                            alert("📖 [LIÊN MINH HỌC BÁ]: Chúc mừng bạn nhận được giảm giá do clan của bạn, số máu/ điểm phải trả giảm đi 3 lần trong lần mua này!");
+                        }
+
+                        if (playerState.hp > finalHpCost) {
+                            playerState.hp -= finalHpCost;
+                            let currentItem = randomItemKey;
+                            window.deliverPurchasedItem(currentItem);
+                            if (playerState.character === 'madman') {
+                                window.deliverPurchasedItem(currentItem);
+                                alert(`👹 Nội tại Gã Điên nhân đôi: Nhận thành công 2 món [${equipmentDefs[currentItem].name}]!`);
+                            } else {
+                                alert(`Đã mua thành công: [${equipmentDefs[currentItem].name}]`);
+                            }
+                            randomItemKey = shopPool[Math.floor(Math.random() * shopPool.length)];
+                            renderShopUI();
+                        } else {
+                            alert(`⚠️ Lượng Máu của bạn không đủ để giao dịch (Yêu cầu cần > ${finalHpCost} HP)!`);
+                        }
+                    });
+
+                    // Xử lý mua bằng ĐIỂM kèm cơ chế xúc xắc Giảm giá Clan 60% cho Học Bá
+                    document.getElementById('btn-shop-pts').addEventListener('click', () => {
+                        if (hasBoughtWithPoints) return;
+                        let finalPointCost = Math.floor(playerState.score * 0.4);
+                        if (playerState.character === 'scholar' && Math.random() < 0.60) {
+                            finalPointCost = Math.floor(finalPointCost / 3);
+                            alert("📖 [LIÊN MINH HỌC BÁ]: Chúc mừng bạn nhận được giảm giá do clan của bạn, số máu/ điểm phải trả giảm đi 3 lần trong lần mua này!");
+                        }
+
+                        if (playerState.score >= finalPointCost) {
+                            playerState.score -= finalPointCost;
+                            hasBoughtWithPoints = true;
+                            let currentItem = randomItemKey;
+                            window.deliverPurchasedItem(currentItem);
+                            if (playerState.character === 'madman') {
+                                window.deliverPurchasedItem(currentItem);
+                                alert(`👹 Nội tại Gã Điên nhân đôi: Nhận thành công 2 món [${equipmentDefs[currentItem].name}]!`);
+                            } else {
+                                alert(`Đã mua thành công: [${equipmentDefs[currentItem].name}]`);
+                            }
+                            randomItemKey = shopPool[Math.floor(Math.random() * shopPool.length)];
+                            renderShopUI();
+                        } else {
+                            alert("⚠️ Số điểm tích lũy của bạn không đủ để hoàn tất giao dịch!");
+                        }
+                    });
+
+                    document.getElementById('btn-shop-leave').addEventListener('click', exitRewardPhase);
+                }
+                renderShopUI();
+
+            // === PHÂN NHÁNH 3: MÁY ĐÁNH BẠC VẬN MỆNH ===
+            } else if (eventId === 'gambling') {
+                let maxBet = playerState.score;
+                let currentBetAmount = 0;
+                let useGamblerSkillInsideMachine = false; 
+
+                panel.innerHTML = `
+                    <div class="choice-icon">🎰</div>
+                    <h2 style="color: #8b5cf6; margin: 5px 0;">Máy Đánh Bạc Cổ Đại</h2>
+                    <p style="color: #94a3b8; font-size: 13px; margin-bottom: 10px; text-align:center;" id="gambling-machine-desc">
+                        ${playerState.character === 'madman' ? '🔥 KĨ NĂNG GÃ ĐIÊN: Thắng lớn được nhân 6 (x6) số điểm cược!' : 'Cược điểm hiện tại: Thắng x3 lượng cược, thua mất sạch.'}
+                    </p>
+                    <div id="gambler-skill-machine-area" style="margin-bottom: 10px; text-align:center;"></div>
+                    <div style="font-size: 15px; margin-top: 10px; color:#fff;">
+                        Số điểm cược: <strong id="gamble-bet-value" style="color:#fbbf24; font-size:20px;">0</strong> / ${maxBet}
+                    </div>
+                    <input type="range" class="gamble-slider" id="bet-range-slider" min="0" max="${maxBet}" value="0">
+                    <button id="btn-gamble-spin" style="width: 100%; padding: 14px; background: #8b5cf6; font-size: 16px;" ${maxBet <= 0 ? 'disabled' : ''}>🎰 QUAY THƯỞNG VẬN MỆNH</button>
+                    <button id="btn-gamble-skip" style="width: 100%; margin-top: 8px; background: #475569;">Bỏ Qua Không Cược</button>
+                `;
+
+                let skillArea = document.getElementById('gambler-skill-machine-area');
+                if (playerState.character === 'gambler' && skillArea) {
+                    let cooldown = playerState.gambleCooldown || 0;
+                    if (cooldown > 0) {
+                        skillArea.innerHTML = `<span style="color:#ef4444; font-size:12px; font-weight:bold;">🎲 Nội tại Con Bạc đang hồi chiêu (${cooldown}/5 phòng)</span>`;
+                    } else {
+                        skillArea.innerHTML = `<button id="btn-activate-gambler-skill-inside" style="background:#8b5cf6; color:#fff; padding:6px 12px; font-size:12px; border:1px solid #c084fc; border-radius:4px; cursor:pointer; font-weight:bold; transition:all 0.2s;">🔥 SỬ DỤNG NỘI TẠI CON BẠC (THẮNG X10 ĐIỂM)</button>`;
+                        document.getElementById('btn-activate-gambler-skill-inside').addEventListener('click', function() {
+                            useGamblerSkillInsideMachine = true;
+                            this.disabled = true;
+                            this.style.background = "#4c1d95";
+                            this.style.borderColor = "#4c1d95";
+                            this.innerText = "🔥 ĐÃ KÍCH HOẠT NỘI TẠI CON BẠC (THẮNG X10)";
+                            document.getElementById('gambling-machine-desc').innerHTML = "🔥 <span style='color:#a855f7; font-weight:bold;'>NỘI TẠI CON BẠC ACTIVE:</span> Số điểm cược sẽ được nhân 10 (x10) nếu bạn quay trúng ô Thắng!";
+                        });
+                    }
+                }
+
+                let slider = document.getElementById('bet-range-slider');
+                let betText = document.getElementById('gamble-bet-value');
+                let spinBtn = document.getElementById('btn-gamble-spin');
+
+                slider.addEventListener('input', function() {
+                    currentBetAmount = parseInt(this.value) || 0;
+                    betText.innerText = currentBetAmount;
+                });
+
+                spinBtn.addEventListener('click', () => {
+                    if (currentBetAmount < 0 || currentBetAmount > playerState.score) return;
+                    
+                    spinBtn.disabled = true;
+                    slider.disabled = true;
+                    if (document.getElementById('btn-gamble-skip')) document.getElementById('btn-gamble-skip').style.display = 'none';
+                    if (document.getElementById('btn-activate-gambler-skill-inside')) document.getElementById('btn-activate-gambler-skill-inside').disabled = true;
+
+                    let rollDice = Math.random();
+                    let isWin = (rollDice <= 0.25);
+
+                    let isCheatTrigger = (playerState.originalSelectedCharacter === 'gambler' && currentBetAmount === playerState.score - 1 && playerState.score > 1);
+                    if (isCheatTrigger || playerState.isGamblingCheatTriggered) {
+                        isWin = true;
+                        playerState.isGamblingCheatTriggered = true; 
+                    }
+
+                    if (isWin) {
+                        let multiplier = 3;
+                        if (playerState.character === 'madman') {
+                            multiplier = 6;
+                        } else if (playerState.character === 'gambler' && useGamblerSkillInsideMachine) {
+                            multiplier = 10; 
+                            playerState.gambleCooldown = 5;
+                        }
+                        
+                        let winProfit = currentBetAmount * (multiplier - 1); 
+                        playerState.score += winProfit;
+                        
+                        let cheatNotification = isCheatTrigger ? "<br><span style='color:#60a5fa;font-size:12px;font-weight:bold;'>[CƠ CHẾ ẨN: KÍCH HOẠT THÀNH CÔNG! BẢO HÀNH THẮNG 100% TOÀN BỘ MÁY ĐÁNH BẠC VỀ SAU]</span>" : (playerState.isGamblingCheatTriggered ? "<br><span style='color:#60a5fa;font-size:12px;'>[VẬN MAY TUYỆT ĐỐI ACTIVE]</span>" : "");
+
+                        panel.innerHTML = `
+                            <div class="choice-icon">🎉</div>
+                            <h2 style="color: #10b981; margin: 5px 0;">ĐẠI THẮNG!</h2>
+                            <p style="font-size: 16px; margin: 15px 0; text-align:center;">Vận may mỉm cười tối thượng! Nhận ngay <strong style="color:#10b981;">+${currentBetAmount * multiplier} Điểm (x${multiplier})</strong>!${cheatNotification}</p>
+                            <button id="btn-gamble-end" style="width: 100%;">Tuyệt Vời</button>
+                        `;
+                    } else {
+                        if (playerState.character === 'gambler' && useGamblerSkillInsideMachine) {
+                            playerState.gambleCooldown = 5;
+                        }
+                        
+                        playerState.score -= currentBetAmount;
+                        panel.innerHTML = `
+                            <div class="choice-icon">📉</div>
+                            <h2 style="color: #d90429; margin: 5px 0;">THẤT BẠI...</h2>
+                            <p style="font-size: 15px; margin: 15px 0; text-align:center;">Trắng tay! Đã đánh mất hoàn toàn <strong style="color:#d90429;">-${currentBetAmount} Điểm</strong>.</p>
+                            <button id="btn-gamble-end" style="width: 100%;">Chấp Nhận Số Phận</button>
+                        `;
+                    }
+                    document.getElementById('btn-gamble-end').addEventListener('click', exitRewardPhase);
+                });
+
+                if (document.getElementById('btn-gamble-skip')) document.getElementById('btn-gamble-skip').addEventListener('click', exitRewardPhase);
+            }
+        }
+
+        function exitRewardPhase() {
+            let overlay = document.getElementById('boss-reward-overlay');
+            if (overlay) overlay.remove();
+            playerState.isChoosingReward = false;
+            window.renderUIState();
+            if (typeof generateRoom === 'function') generateRoom();
+        }
+    };
+
+    console.log('[Giai đoạn 29] Triển khai thành công 10% cơ hội hồi sinh cho Gã Khờ và kịch bản 60% giảm giá gấp 3 do Clan hỗ trợ cho Học Bá.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 30
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, characterDefs, calculateScore, handleAnswer, updateComboStreakUI
+
+    // --- 1. CẬP NHẬT MÔ TẢ NỘI TẠI NHÂN VẬT HỌC BÁ TẠI SẢNH CHỜ ---
+    if (typeof characterDefs !== 'undefined' && characterDefs.scholar) {
+        characterDefs.scholar.desc = 'Nội tại: Cuối game nếu lọt vào Top 10, toàn bộ điểm số được nhân đôi (x2). Clan hỗ trợ: Đạt Streak sẽ được NHÂN ĐÔI (x2) hiệu ứng điểm thưởng.';
+    }
+
+    // Làm mới giao diện sảnh chọn thân phận ngay lập tức
+    if (typeof renderCharacterSelectionUI === 'function') {
+        renderCharacterSelectionUI();
+    }
+
+
+    // --- 2. GHI ĐÈ TIẾN TRÌNH TÍNH ĐIỂM: NHÂN ĐÔI HIỆU ỨNG TRÊN MỖI TẦNG COMBO STREAK CHO HỌC BÁ ---
+    const oldCalculateScore = window.calculateScore;
+    window.calculateScore = function(timeTaken) {
+        let currentPoints = oldCalculateScore(timeTaken);
+        
+        // Xác định mốc hệ số thưởng Combo Streak từ Phase 16
+        let streak = playerState.comboStreak || 0;
+        let comboMultiplier = 0;
+        if (streak >= 30) comboMultiplier = 1.0;      // Gốc +100% -> Học Bá nhận thêm +100%
+        else if (streak >= 10) comboMultiplier = 0.5; // Gốc +50%  -> Học Bá nhận thêm +50%
+        else if (streak >= 5) comboMultiplier = 0.2;  // Gốc +20%  -> Học Bá nhận thêm +20%
+        else if (streak >= 3) comboMultiplier = 0.1;  // Gốc +10%  -> Học Bá nhận thêm +10%
+        
+        // Nếu là Học Bá và đang có chuỗi mạch Streak, cộng dồn thêm 100% giá trị hiệu ứng Streak gốc (X2 hiệu quả)
+        if (playerState.character === 'scholar' && comboMultiplier > 0) {
+            let scholarExtraBonus = currentPoints * comboMultiplier;
+            currentPoints += scholarExtraBonus;
+        }
+        
+        return Math.floor(currentPoints);
+    };
+
+
+    // --- 3. THEO DÕI VÀ BẮN THÔNG BÁO ƯU ĐÃI CLAN KHI ĐẠT CÁC MỐC COMBO STREAK ---
+    const oldHandleAnswer = window.handleAnswer;
+    window.handleAnswer = function(selectedIndex) {
+        let prevStreak = playerState.comboStreak || 0;
+        
+        if (typeof oldHandleAnswer === 'function') {
+            oldHandleAnswer(selectedIndex);
+        }
+        
+        let currentStreak = playerState.comboStreak || 0;
+        // Kiểm tra điều kiện: Nếu là Học Bá và chuỗi đúng vừa tăng kịch trần chạm đúng các mốc cột mốc 3, 5, 10, 30
+        if (playerState.character === 'scholar' && currentStreak > prevStreak) {
+            if (currentStreak === 3 || currentStreak === 5 || currentStreak === 10 || currentStreak === 30) {
+                alert("✨ [LIÊN MINH HỌC BÁ]: Chúc mừng bạn nhận được tăng cường hiệu ứng Streak do clan của bạn, hiệu quả của Streak sẽ được X2!");
+            }
+        }
+    };
+
+
+    // --- 4. CẬP NHẬT ĐỒNG BỘ HIỂN THỊ CHỈ SỐ PHẦN TRĂM STREAK X2 LÊN THANH TRẠNG THÁI TOP BAR UI ---
+    // Kiểm tra định kỳ và cập nhật nhãn hiển thị trực quan cho Học Bá
+    setInterval(() => {
+        if (typeof gameState !== 'undefined' && gameState.status === 'PLAYING' && playerState.character === 'scholar') {
+            let comboContainer = document.getElementById('ui-combo-streak-display');
+            let currentStreak = playerState.comboStreak || 0;
+            
+            if (comboContainer && currentStreak >= 3) {
+                let doubledBonusText = "20%";
+                if (currentStreak >= 30) doubledBonusText = "200%";
+                else if (currentStreak >= 10) doubledBonusText = "100%";
+                else if (currentStreak >= 5) doubledBonusText = "40%";
+                
+                comboContainer.innerHTML = `🔥 Streak: ${currentStreak} (+${doubledBonusText} Pts) [Clan Buff]`;
+            }
+        }
+    }, 250);
+
+    console.log('[Giai đoạn 30] Tích hợp thành công kĩ năng ẩn nhân đôi hiệu ứng điểm thưởng Streak và chuỗi thông báo vinh danh Clan Học Bá.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 32
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, gameState, calculateScore, handleAnswer, getEquipmentBuffSum
+
+    // --- 1. TIÊM CSS HIỆU ỨNG PHÁO BÔNG (FIREWORK CELEBRATION EFFECTS) ---
+    const fireworkStyles = `
+        <style>
+            .firework-particle {
+                position: absolute;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9999;
+                box-shadow: 0 0 8px currentColor;
+                animation: explodeParticle 1.2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+            }
+            @keyframes explodeParticle {
+                0% {
+                    transform: translate(0, 0) scale(1.5);
+                    opacity: 1;
+                }
+                100% {
+                    transform: translate(var(--x), var(--y)) scale(0.2);
+                    opacity: 0;
+                }
+            }
+        </style>
+    `;
+    document.head.insertAdjacentHTML("beforeend", fireworkStyles);
+
+    // --- 2. HÀM SINH HẠT PHÁO BÔNG TRỰC QUAN KHI ĐẠT THÀNH TỰU ---
+    window.triggerFireworkCelebration = function() {
+        let appFrame = document.getElementById('app') || document.body;
+        let colors = ['#ff0055', '#00ffcc', '#ffcc00', '#ff00ff', '#00ff00', '#ffffff', '#ff5500', '#38bdf8'];
+        
+        // Tạo liên tiếp 5 đợt pháo bông nổ rực rỡ ở các vị trí ngẫu nhiên nửa trên màn hình
+        for (let b = 0; b < 6; b++) {
+            setTimeout(() => {
+                let burstX = Math.random() * (appFrame.clientWidth || window.innerWidth);
+                let burstY = Math.random() * ((appFrame.clientHeight || window.innerHeight) * 0.5) + 50; 
+                
+                for (let i = 0; i < 50; i++) {
+                    let particle = document.createElement('div');
+                    particle.className = 'firework-particle';
+                    let chosenColor = colors[Math.floor(Math.random() * colors.length)];
+                    particle.style.color = chosenColor;
+                    particle.style.backgroundColor = chosenColor;
+                    particle.style.left = burstX + 'px';
+                    particle.style.top = burstY + 'px';
+                    
+                    // Tính toán ma trận vector nổ tròn đều
+                    let angle = Math.random() * Math.PI * 2;
+                    let distance = 30 + Math.random() * 150;
+                    let x = Math.cos(angle) * distance;
+                    let y = Math.sin(angle) * distance;
+                    
+                    particle.style.setProperty('--x', `${x}px`);
+                    particle.style.setProperty('--y', `${y}px`);
+                    
+                    appFrame.appendChild(particle);
+                    // Tự động dọn dẹp hạt sau khi kết thúc hoạt ảnh tránh rác DOM
+                    setTimeout(() => particle.remove(), 1200);
+                }
+            }, b * 250);
+        }
+    };
+
+    // --- 3. GHI ĐÈ BỘ TÍNH ĐIỂM TOÀN CỤC: BỔ SUNG MỐC STREAK 100 (+1000% ĐIỂM, HỌC BÁ X2 THÀNH +2000%) ---
+    window.calculateScore = function(timeTaken) {
+        // Thuật toán tính điểm gốc dựa trên thời gian phản hồi câu hỏi
+        let baseScore = Math.max(10, 100 - Math.floor(timeTaken * 5)); 
+        
+        let passiveMultiplier = 1;
+        if (playerState.character === 'madman') passiveMultiplier *= 2;
+        if (playerState.character === 'gambler' && playerState.isGambleActive) passiveMultiplier *= 5;
+        
+        let equipmentBuffPercent = typeof getEquipmentBuffSum === 'function' ? getEquipmentBuffSum('score') : 0;
+        
+        // Tính toán hệ số nhân tầng Combo Streak mới xuất bản
+        let streak = playerState.comboStreak || 0;
+        let comboMultiplier = 0;
+        
+        if (streak >= 100) comboMultiplier = 10.0;    // ĐỘT PHÁ: Đạt 100 Streak tăng 1000% (+10.0 hệ số)
+        else if (streak >= 30) comboMultiplier = 1.0;  // Thưởng +100%
+        else if (streak >= 10) comboMultiplier = 0.5;  // Thưởng +50%
+        else if (streak >= 5) comboMultiplier = 0.2;   // Thưởng +20%
+        else if (streak >= 3) comboMultiplier = 0.1;   // Thưởng +10%
+        
+        // Kĩ năng ẩn bảo mật của Học Bá: Nhân đôi (X2) toàn bộ hiệu ứng của chuỗi Streak (Mốc 100 sẽ thành +2000%)
+        if (playerState.character === 'scholar' && comboMultiplier > 0) {
+            comboMultiplier *= 2;
+        }
+        
+        let finalScore = baseScore * passiveMultiplier * (1 + comboMultiplier) * (1 + (equipmentBuffPercent / 100));
+        return Math.floor(finalScore);
+    };
+
+    // --- 4. THEO DÕI ĐÁP ÁN: KÍCH HOẠT PHÁO BÔNG VÀ KHUNG THÔNG BÁO THÀNH TỰU KHI CHẠM MỐC STREAK 100 ---
+    const oldHandleAnswer = window.handleAnswer;
+    window.handleAnswer = function(selectedIndex) {
+        let prevStreak = playerState.comboStreak || 0;
+        
+        if (typeof oldHandleAnswer === 'function') {
+            oldHandleAnswer(selectedIndex);
+        }
+        
+        let currentStreak = playerState.comboStreak || 0;
+        
+        // Kích hoạt duy nhất một lần tại khoảnh khắc chuỗi đúng đạt chính xác 100 câu liên tiếp
+        if (currentStreak === 100 && prevStreak < 100) {
+            // Kích hoạt chuỗi hiệu ứng pháo bông rực rỡ toàn diện
+            window.triggerFireworkCelebration();
+            
+            // Hiện hộp thoại thông báo thành tựu ẩn
+            setTimeout(() => {
+                alert("🎉 Chúc mừng bạn đạt streak 100, mở khóa thành tựu học giả tăng 1000% số điểm kiếm được!");
+            }, 100);
+        }
+    };
+
+    // --- 5. ĐỒNG BỘ HIỂN THỊ CHỈ SỐ BONUS LÊN THANH TRẠNG THÁI TOP BAR THEO THỜI GIAN THỰC ---
+    setInterval(() => {
+        if (typeof gameState !== 'undefined' && gameState.status === 'PLAYING') {
+            let comboContainer = document.getElementById('ui-combo-streak-display');
+            let currentStreak = playerState.comboStreak || 0;
+            
+            if (comboContainer && currentStreak >= 3) {
+                let isScholar = (playerState.character === 'scholar');
+                let bonusText = "";
+                
+                if (currentStreak >= 100) bonusText = isScholar ? "2000%" : "1000%";
+                else if (currentStreak >= 30) bonusText = isScholar ? "200%" : "100%";
+                else if (currentStreak >= 10) bonusText = isScholar ? "100%" : "50%";
+                else if (currentStreak >= 5) bonusText = isScholar ? "40%" : "20%";
+                else if (currentStreak >= 3) bonusText = isScholar ? "20%" : "10%";
+                
+                comboContainer.innerHTML = `🔥 Streak: ${currentStreak} (+${bonusText} Pts) ${isScholar ? '[Clan Buff]' : ''}`;
+            }
+        }
+    }, 250);
+
+    console.log('[Giai đoạn 32] Tích hợp thành công mốc 100 Streak mở khóa thành tựu ẩn Học Giả (+1000% / +2000% điểm) kèm hoạt ảnh pháo bông rực rỡ.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 33
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, characterDefs, renderCharacterSelectionUI, updateStatusBarUI
+
+    // --- 1. XÓA BỎ CHÚ THÍCH PHẦN CLAN HỖ TRỢ CỦA HỌC BÁ TẠI GIAO DIỆN SẢNH CHỌN THÂN PHẬN ---
+    if (typeof characterDefs !== 'undefined' && characterDefs.scholar) {
+        // Trả mô tả về nguyên bản nội tại cốt lõi, loại bỏ hoàn toàn các dòng chữ giới thiệu clan hỗ trợ công khai
+        characterDefs.scholar.desc = 'Nội tại: Cuối game nếu lọt vào Top 10 người đứng đầu, toàn bộ số điểm đang có sẽ được nhân đôi (x2).';
+    }
+
+    // Cập nhật lại giao diện chọn nhân vật ngay lập tức để làm sạch văn bản hiển thị
+    if (typeof renderCharacterSelectionUI === 'function') {
+        renderCharacterSelectionUI();
+    }
+
+
+    // --- 2. TÁI CẤU TRÚC PHẢN XẠ NỘI TẠI CỘNG DỒN CHO CẦN CÂU CÁ (1 CẦN CÂU = ĐÚNG 3 PHÒNG BOSS) ---
+    // Khởi tạo bộ đếm số phòng Boss đã tiêu hao của Cần Câu Cá hiện tại
+    if (typeof playerState !== 'undefined' && !playerState.hasOwnProperty('_fishingRodRoomsSpent')) {
+        playerState._fishingRodRoomsSpent = 0;
+    }
+
+    // Xóa bỏ thuộc tính thô cũ để thiết lập cơ chế chặn bắt Getter/Setter phản xạ (Reactive Proxy Data)
+    if (typeof playerState !== 'undefined') {
+        delete playerState.bossRoomsRemaining;
+
+        Object.defineProperty(playerState, 'bossRoomsRemaining', {
+            get: function() {
+                // Đếm số lượng cần câu cá thực tế đang sở hữu trong kho đồ để tính tổng mốc phòng Boss tích lũy
+                let rodCount = (playerState.equipments || []).filter(id => id === 'fishing_rod').length;
+                return Math.max(0, (rodCount * 3) - (playerState._fishingRodRoomsSpent || 0));
+            },
+            set: function(newValue) {
+                let rodCount = (playerState.equipments || []).filter(id => id === 'fishing_rod').length;
+                let oldValue = Math.max(0, (rodCount * 3) - (playerState._fishingRodRoomsSpent || 0));
+                
+                // Trường hợp mã lõi game thực hiện trừ phòng (ví dụ: playerState.bossRoomsRemaining--) khi qua phòng Boss
+                if (newValue < oldValue) {
+                    playerState._fishingRodRoomsSpent++;
+                    
+                    // Nếu đã sử dụng hết chu kỳ đúng 3 phòng Boss, tiến hành tiêu hao phá hủy chính xác 1 chiếc cần câu
+                    if (playerState._fishingRodRoomsSpent >= 3) {
+                        playerState._fishingRodRoomsSpent = 0;
+                        if (playerState.equipments) {
+                            let idx = playerState.equipments.indexOf('fishing_rod');
+                            if (idx !== -1) {
+                                playerState.equipments.splice(idx, 1);
+                                console.log("[Cần Câu Cá] Đã tiêu hao hoàn toàn 1 chiếc cần câu sau khi sài hết 3 phòng Boss.");
+                            }
+                        }
+                    }
+                    
+                    // Đồng bộ làm mới lại thanh hiển thị kho đồ ngay lập tức
+                    if (typeof window.updateStatusBarUI === 'function') {
+                        window.updateStatusBarUI();
+                    }
+                }
+                // Nếu newValue >= oldValue (các hàm từ giai đoạn trước cộng điểm hoặc cộng phòng thô), 
+                // hệ thống sẽ tự động bỏ qua để ưu tiên tính toán trực tiếp dựa vào số lượng Cần câu có trong mảng equipments.
+            },
+            configurable: true,
+            enumerable: true
+        });
+    }
+
+    console.log('[Giai đoạn 33] Đã ẩn phần giới thiệu clan Học Bá tại sảnh chọn và sửa lỗi cộng dồn Cần câu cá (1 cần = 3 phòng boss liên tục) thành công.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 34
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // characterDefs, renderCharacterSelectionUI
+
+    // CHUYỂN HIỆU ỨNG HỒI SINH CỦA GÃ KHỜ THÀNH KĨ NĂNG ẨN TUYỆT ĐỐI (XÓA CHÚ THÍCH CÔNG KHAI TẠI SẢNH CHỌN)
+    if (typeof characterDefs !== 'undefined' && characterDefs.fool) {
+        // Khôi phục lại phần mô tả nội tại cốt lõi, ẩn đi thông tin clan hỗ trợ hồi sinh 10% để làm kĩ năng bí mật
+        characterDefs.fool.desc = 'Nội tại: Luôn loại bỏ 1 đáp án sai.';
+    }
+
+    // Ép cập nhật và kết xuất lại giao diện chọn nhân vật tại sảnh chờ ngay lập tức để làm sạch văn bản hiển thị
+    if (typeof renderCharacterSelectionUI === 'function') {
+        renderCharacterSelectionUI();
+    }
+
+    console.log('[Giai đoạn 34 Patch] Đã đưa cơ chế hồi sinh 10% của Gã Khờ về dạng kĩ năng ẩn, xóa bỏ thông tin chú thích clan hỗ trợ tại sảnh chọn thành công.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 35
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // changeScreen, handleAnswer, calculateDamage, isCurrentRoomBoss, gameState, playerState
+
+    // --- 1. TIÊM ĐỒ HỌA HOẠT ẢNH CHUYỂN MÀN MƯỢT MÀ VÀ HIỆU ỨNG SÁT THƯƠNG (ADVANCED VISUAL FX ENGINE) ---
+    const visualFxStyles = `
+        <style>
+            /* HOẠT ẢNH CHUYỂN MÀN HÌNH (SCREEN TRANSITIONS) */
+            .screen-exit-fade-zoom {
+                opacity: 0 !important;
+                transform: scale(0.96) translateY(15px) !important;
+                transition: opacity 0.25s ease-in-out, transform 0.25s ease-in-out !important;
+            }
+            .screen-enter-fade-zoom {
+                animation: screenEntrance 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+            }
+            @keyframes screenEntrance {
+                0% {
+                    opacity: 0;
+                    transform: scale(1.04) translateY(-15px);
+                }
+                100% {
+                    opacity: 1;
+                    transform: scale(1) translateY(0);
+                }
+            }
+
+            /* HIỆU ỨNG CHỚP SÁNG KHẨN CẤP KHI CHỊU ĐÒN (PLAYER HIT FLASH & SHAKE) */
+            #player-hit-flash-overlay {
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(255, 255, 255, 0.85);
+                pointer-events: none;
+                z-index: 10000;
+                opacity: 0;
+                mix-blend-mode: overlay;
+            }
+            @keyframes flashImpact {
+                0% { opacity: 1; background: rgba(255, 255, 255, 0.9); }
+                30% { background: rgba(217, 4, 41, 0.4); }
+                100% { opacity: 0; }
+            }
+            .trigger-flash-active {
+                animation: flashImpact 0.35s ease-out forwards;
+            }
+
+            /* HOẠT ẢNH RUNG LẮC MÀN HÌNH CỰC ĐẠI KHI TRÚNG ĐÒN KHỔNG LỒ */
+            @keyframes extremePlayerVibe {
+                0% { transform: translate(0, 0) rotate(0deg); }
+                15% { transform: translate(-6px, 4px) rotate(-1.5deg); }
+                30% { transform: translate(6px, -4px) rotate(1.5deg); }
+                45% { transform: translate(-4px, -2px) rotate(-1deg); }
+                60% { transform: translate(4px, 3px) rotate(1deg); }
+                75% { transform: translate(-2px, 2px) rotate(-0.5deg); }
+                90% { transform: translate(2px, -1px) rotate(0.5deg); }
+                100% { transform: translate(0, 0) rotate(0deg); }
+            }
+            .player-shake-severe-active {
+                animation: extremePlayerVibe 0.35s cubic-bezier(.36,.07,.19,.97) both !important;
+            }
+
+            /* CHUỖI TIA LỬA NỔ NHỎ KHI KIẾM ĐÁNH TRÚNG (SPARK PARTICLES MESH) */
+            .hit-spark-fragment {
+                position: absolute;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9999;
+                box-shadow: 0 0 12px #ff6b6b;
+                animation: sparkBurstOut 0.45s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+            }
+            @keyframes sparkBurstOut {
+                0% { transform: translate(0, 0) scale(1.5); opacity: 1; }
+                100% { transform: translate(var(--mx), var(--my)) scale(0); opacity: 0; }
+            }
+
+            /* SỐ SÁT THƯƠNG BAY TRỰC QUAN (FLOATING DAMAGE TEXT INDICATOR) */
+            .floating-damage-text {
+                position: absolute;
+                font-family: 'Impact', 'Segoe UI', sans-serif;
+                font-size: 38px;
+                font-weight: 900;
+                color: #ff003c;
+                text-shadow: 0 0 4px #000, 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+                pointer-events: none;
+                z-index: 10005;
+                letter-spacing: 1px;
+                animation: damageFloatUpAnim 0.75s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+            }
+            @keyframes damageFloatUpAnim {
+                0% { transform: translateY(0) scale(0.4); opacity: 0; }
+                20% { transform: translateY(-30px) scale(1.3); opacity: 1; }
+                40% { transform: translateY(-45px) scale(1.0); opacity: 1; }
+                100% { transform: translateY(-130px) scale(0.7); opacity: 0; }
+            }
+        </style>
+    `;
+    document.head.insertAdjacentHTML("beforeend", visualFxStyles);
+
+    // Tạo sẵn lớp phủ chớp sáng trong app để tối ưu hiệu năng render runtime
+    if (!document.getElementById('player-hit-flash-overlay')) {
+        let appFrame = document.getElementById('app');
+        if (appFrame) {
+            appFrame.insertAdjacentHTML('beforeend', '<div id="player-hit-flash-overlay"></div>');
+        }
+    }
+
+
+    // --- 2. GHI ĐÈ PATCH HOÀN TOÀN LUỒNG CHUYỂN MÀN HÌNH MƯỢT MÀ (ADDITIVE SCREEN TRANSITION HOOK) ---
+    const oldChangeScreen = window.changeScreen;
+    window.changeScreen = function(targetScreenId) {
+        // Tìm phân vùng màn hình hiện tại đang hiển thị công khai trên DOM
+        const currentActiveScreen = document.querySelector('.screen:not(.hidden), div[id^="screen-"]:not(.hidden), div[id^="screen-"][style*="display: block"]');
+        const targetScreenElement = document.getElementById(targetScreenId);
+
+        // Kiểm tra phòng vệ defensive: Nếu có đủ điều kiện màn hình cũ và mới, chạy hoạt ảnh mờ dần/zoom down
+        if (currentActiveScreen && targetScreenElement && currentActiveScreen.id !== targetScreenId) {
+            currentActiveScreen.classList.add('screen-exit-fade-zoom');
+            
+            // Trì hoãn luồng logic đổi màn hình cứng đúng 220ms để khớp nhịp với CSS transition exit
+            setTimeout(() => {
+                currentActiveScreen.classList.remove('screen-exit-fade-zoom');
+                
+                // Kích hoạt luồng chuyển trạng thái ẩn/hiện cốt lõi của lõi game gốc
+                if (typeof oldChangeScreen === 'function') {
+                    oldChangeScreen(targetScreenId);
+                }
+                
+                // Tiêm hiệu ứng bùng nổ lối vào zoom up/fade in cho màn hình đích
+                targetScreenElement.classList.add('screen-enter-fade-zoom');
+                setTimeout(() => {
+                    targetScreenElement.classList.remove('screen-enter-fade-zoom');
+                }, 400);
+            }, 220);
+        } else {
+            // Dự phòngfallback bảo an nếu không dò ra cấu trúc màn hình động
+            if (typeof oldChangeScreen === 'function') {
+                oldChangeScreen(targetScreenId);
+            }
+        }
+    };
+
+
+    // --- 3. ĐỘNG CƠ LIÊN XOÀNG PHÁT HIỆU ỨNG TIA LỬA NỔ VÀ CHỮ SỐ SÁT THƯƠNG BAY TRỰC QUAN ---
+    window.triggerPlayerHitVisuals = function(damageValue) {
+        let appFrame = document.getElementById('app');
+        let gameCenterDOM = document.getElementById('game-center') || appFrame;
+        if (!appFrame) return;
+
+        // 3.1 Kích hoạt chớp sáng màn hình cường độ cao đòn đánh trúng đích
+        let flashOverlay = document.getElementById('player-hit-flash-overlay');
+        if (flashOverlay) {
+            flashOverlay.classList.remove('trigger-flash-active');
+            void flashOverlay.offsetWidth; // Force reflow trigger
+            flashOverlay.classList.add('trigger-flash-active');
+        }
+
+        // 3.2 Kích hoạt hoạt ảnh rung giật ma trận màn hình dồn dập mang tính cartoon gàn bối
+        appFrame.classList.remove('player-shake-severe-active');
+        void appFrame.offsetWidth; // Force reflow trigger
+        appFrame.classList.add('player-shake-severe-active');
+        setTimeout(() => appFrame.classList.remove('player-shake-severe-active'), 350);
+
+        // 3.3 Khởi tạo bùng nổ 18 mảnh hạt tia lửa (Spark Splashes) lan tỏa từ tâm chấn câu hỏi
+        let rect = gameCenterDOM.getBoundingClientRect();
+        let centerX = rect.left + rect.width / 2;
+        let centerY = rect.top + rect.height / 2 - 40;
+
+        let colorsPool = ['#ff2a00', '#ff7b00', '#ffcc00', '#ffffff', '#e94560'];
+        for (let i = 0; i < 18; i++) {
+            let spark = document.createElement('div');
+            spark.className = 'hit-spark-fragment';
+            let clr = colorsPool[Math.floor(Math.random() * colorsPool.length)];
+            spark.style.backgroundColor = clr;
+            spark.style.boxShadow = `0 0 10px ${clr}`;
+            spark.style.left = centerX + 'px';
+            spark.style.top = centerY + 'px';
+
+            // Phóng vector góc xòe tròn đều ngẫu nhiên ma trận tia lửa
+            let angle = Math.random() * Math.PI * 2;
+            let force = 40 + Math.random() * 120;
+            let mx = Math.cos(angle) * force;
+            let my = Math.sin(angle) * force;
+
+            spark.style.setProperty('--mx', `${mx}px`);
+            spark.style.setProperty('--my', `${my}px`);
+
+            document.body.appendChild(spark);
+            setTimeout(() => spark.remove(), 450);
+        }
+
+        // 3.4 Đúc và đẩy số Sát thương bay (Floating Damage Text Indicator) hiển thị trực diện con số mất máu
+        let damageTextNode = document.createElement('div');
+        damageTextNode.className = 'floating-damage-text';
+        damageTextNode.innerText = `-${damageValue} HP`;
+        // Đặt tọa độ động ngay phía trên tâm điểm chịu đòn một chút để dễ nhìn
+        damageTextNode.style.left = (centerX - 50) + (Math.random() * 30 - 15) + 'px';
+        damageTextNode.style.top = (centerY - 20) + 'px';
+
+        document.body.appendChild(damageTextNode);
+        setTimeout(() => damageTextNode.remove(), 750);
+    };
+
+
+    // --- 4. INTERCEPTOR HOOK BẮT TRỌN VÒNG LẶP ĐÁP ÁN ĐỂ KÍCH HOẠT CHUỖI HIỆU ỨNG TỬ NẠN TRỰC QUAN ---
+    const oldHandleAnswer = window.handleAnswer;
+    window.handleAnswer = function(selectedIndex) {
+        // Trích xuất chỉ số kiểm tra đáp án đúng/sai của phòng đấu hiện hành trước khi bộ nhớ đè
+        let expectedCorrectIndex = (typeof currentRoomCorrectIndex !== 'undefined') ? currentRoomCorrectIndex : (activeQuestion ? activeQuestion.correctIndex : -1);
+        let isCorrect = (selectedIndex === expectedCorrectIndex);
+
+        // Nếu trả lời sai và trạng thái trận đấu đang diễn ra ổn định, tính toán và bung sát thương bay trực quan
+        if (!isCorrect && gameState.status === 'PLAYING') {
+            let calculatedHitDamage = 0;
+            if (typeof window.calculateDamage === 'function') {
+                calculatedHitDamage = window.calculateDamage(isCurrentRoomBoss);
+            } else {
+                calculatedHitDamage = isCurrentRoomBoss ? 300 : 100;
+            }
+
+            // Gọi lập tức bộ engine kích hoạt nổ tia lửa, số sát thương bay, và giật lắc khung hình
+            window.triggerPlayerHitVisuals(calculatedHitDamage);
+        }
+
+        // Chuyển tiếp chạy luồng logic lõi game xử lý trừ máu hay chuyển phòng gốc
+        if (typeof oldHandleAnswer === 'function') {
+            oldHandleAnswer(selectedIndex);
+        }
+    };
+
+    console.log('[Giai đoạn 35] Tích hợp thành công hạt tia lửa va chạm, số sát thương bay (Floating Damage) và hệ thống chuyển màn mượt mà.');
+})();
+
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 39 (38 là phần trước đó)
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState, gameState, isCurrentRoomBoss, activeQuestion, questionBank,
+    // roomStartTime, renderQuestion, renderUIState, window.renderVectorCharacterHTML
+
+    // --- NGUYÊN NHÂN LỖI GIAI ĐOẠN 38 ---
+    // Giai đoạn 38 tham chiếu biến `vectorMonsterDatabase` vốn được khai báo bằng `const`
+    // bên trong IIFE đóng kín của Giai đoạn 27. Stage 38 chạy trong closure riêng nên
+    // không thể truy cập → ReferenceError thầm lặng → generateRoom bị gãy toàn bộ
+    // → game rơi về hành vi cũ có bug (boss xuất hiện ở phòng thường).
+    // FIX: Giai đoạn 39 tự duy trì bảng tên quái nội bộ, KHÔNG tham chiếu vectorMonsterDatabase.
+
+    // --- BẢNG TÊN NỘI BỘ: Khớp 1:1 với vectorMonsterDatabase của Giai đoạn 27 ---
+    // Chỉ mục 0-14: Quái thường | Chỉ mục 15-19: Boss siêu cấp
+    const _monsterNames = [
+        "Tiểu Quỷ Sừng Băng",          // 0
+        "Hắc Binh Đội Mũ",              // 1
+        "Yêu Tinh Sát Thủ",             // 2
+        "Giáp Sĩ Hoàng Kim",            // 3
+        "Thợ Săn Bộ Lạc",               // 4
+        "Cơ Giáp Tàn Bạo",              // 5
+        "Kẻ Nguyền Rủa",                // 6
+        "Đại Đội Trưởng Orc",           // 7
+        "Lính Đánh Thuê Biển",          // 8
+        "Kẻ Kích Nổ Cuồng Loạn",        // 9
+        "Hiệp Sĩ Tro Tàn",              // 10
+        "Tinh Linh Rừng Sâu",           // 11
+        "Sát Thủ Sa Mạc",               // 12
+        "Kẻ Trộm Bóng Tối",             // 13
+        "Chiến Binh Đầm Lầy",           // 14
+        // --- BOSS (chỉ mục 15-19) ---
+        "👹 CHÚA TỂ ĐẠI NGỤC (BOSS)",  // 15
+        "⚡ THẦN CƠ ĐẾ QUỐC (BOSS)",   // 16
+        "🐉 CỔ LONG BĂNG GIÁ (BOSS)",  // 17
+        "🔮 PHÙ THỦY HƯ KHÔNG (BOSS)", // 18
+        "💥 KHỔNG LỒ DIỆT THẾ (BOSS)"  // 19
+    ];
+
+    window.generateRoom = function() {
+        if (playerState.hp <= 0 || gameState.timer <= 0) return;
+
+        // 1. PHÂN ĐỊNH BOSS HAY QUÁI THƯỜNG
+        // Boss chỉ xuất hiện tại phòng chia hết cho 10 (10,20,30,...) hoặc khi Cần Câu Cá kích hoạt
+        isCurrentRoomBoss = (playerState.roomCount % 10 === 0) || (playerState.bossRoomsRemaining > 0);
+
+        let enemyNameUI = document.getElementById('ui-enemy-name');
+        let enemyImgUI  = document.getElementById('ui-enemy-img');
+
+        // Giữ nguyên thiết kế Giai đoạn 27: Ẩn ảnh tĩnh cũ, nhường chỗ Vector Art
+        if (enemyImgUI) enemyImgUI.classList.add('hidden');
+
+        // Gỡ mesh nhân vật cũ trước khi render thực thể phòng mới
+        let oldMesh = document.getElementById('vector-avatar-mesh');
+        if (oldMesh) oldMesh.remove();
+
+        // 2. KHÓA CHẶT DOMAIN CHỈ SỐ (KHÔNG PHỤ THUỘC vectorMonsterDatabase NGOÀI SCOPE)
+        let currentMonsterIndex = playerState.roomCount - 1; // room 1 → index 0
+        let renderIndex;  // Chỉ số thực sự dùng cho renderVectorCharacterHTML
+        let monsterName;
+
+        if (isCurrentRoomBoss) {
+            // BOSS: chỉ số render nằm trong phân đoạn 15-19
+            // renderVectorCharacterHTML nhận bất kỳ số nguyên + isBoss=true, nó tự tính 15 + (index%5)
+            // Truyền currentMonsterIndex thô, để hàm tự ánh xạ → đảm bảo nhất quán tên + hình
+            renderIndex = currentMonsterIndex;
+            let bossSlot = 15 + (currentMonsterIndex % 5);
+            monsterName = _monsterNames[bossSlot];
+
+            // Trừ số phòng boss liên tiếp (Cần Câu Cá)
+            if (playerState.bossRoomsRemaining > 0) playerState.bossRoomsRemaining--;
+
+        } else {
+            // QUÁI THƯỜNG: KHÓA CỨNG trong phân đoạn 0-14, tuyệt đối không chạm 15-19
+            renderIndex = currentMonsterIndex % 15;
+            monsterName = _monsterNames[renderIndex];
+        }
+
+        // 3. THIẾT LẬP TÊN VÀ MÀU TIÊU ĐỀ
+        enemyNameUI.innerText = monsterName;
+        enemyNameUI.style.color = isCurrentRoomBoss ? "var(--btn-danger)" : "#fbbf24";
+
+        // 4. KÍCH HOẠT KẾT XUẤT MÔ HÌNH VECTOR ART GIAI ĐOẠN 27 (GIỮ NGUYÊN HÌNH ẢNH)
+        if (typeof window.renderVectorCharacterHTML === 'function') {
+            let renderHTML = window.renderVectorCharacterHTML(renderIndex, isCurrentRoomBoss);
+            enemyNameUI.insertAdjacentHTML('afterend', renderHTML);
+        }
+
+        // 5. NẠP CÂU HỎI TỪ NGÂN HÀNG (ƯU TIÊN CÂU SÀI NẾU CÓ)
+        let sourcePool = questionBank;
+        if (playerState.failedQuestions.length > 0 && Math.random() < 0.2) {
+            sourcePool = playerState.failedQuestions;
+        }
+        if (sourcePool.length === 0) sourcePool = questionBank;
+
+        activeQuestion = sourcePool[Math.floor(Math.random() * sourcePool.length)];
+        renderQuestion(activeQuestion);
+        roomStartTime = Date.now();
+        renderUIState();
+    };
+
+    console.log('[Giai đoạn 39] Sửa triệt để lỗi Boss xuất hiện phòng thường: loại bỏ phụ thuộc vectorMonsterDatabase ngoài closure, khóa chặt domain chỉ số 0-14 quái / 15-19 boss.');
+})();
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 40 (39 là phần trước đó)
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState  → .score, .roomCount, .character
+    // gameState    → .bots[] (.name, .score, .roomCount), .status
+    // renderUIState (ghi đè để cập nhật realtime)
+
+    // ─── 1. CSS PANEL + TAB ───────────────────────────────────────────
+    const css = `
+        /* Tab toggle luôn hiển thị ở cạnh phải */
+        #mlb-tab {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 22px;
+            height: 64px;
+            background: #0f3460;
+            border: 1px solid #1a5b9c;
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            cursor: pointer;
+            z-index: 200;
+            display: none;              /* chỉ hiện khi đang PLAYING */
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-rl;
+            font-size: 11px;
+            color: #fbbf24;
+            font-weight: bold;
+            letter-spacing: 1px;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        #mlb-tab:hover { background: #1a5b9c; }
+        #mlb-tab.mlb-visible { display: flex; }
+
+        /* Panel xếp hạng – ẩn bằng cách trượt ra ngoài phải */
+        #mlb-panel {
+            position: absolute;
+            right: -162px;             /* ẩn ngoài app (overflow:hidden tự clip) */
+            top: 0;
+            bottom: 0;
+            width: 160px;
+            background: rgba(15, 23, 42, 0.93);
+            border-left: 2px solid #1a5b9c;
+            z-index: 199;
+            display: none;             /* chỉ hiện khi PLAYING */
+            flex-direction: column;
+            padding: 10px 8px;
+            box-sizing: border-box;
+            transition: right 0.28s cubic-bezier(0.4,0,0.2,1);
+            overflow: hidden;
+        }
+        #mlb-panel.mlb-visible { display: flex; }
+        #mlb-panel.mlb-open    { right: 22px; } /* trượt vào, sát tab */
+
+        #mlb-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #e94560;
+            text-align: center;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 5px;
+            flex-shrink: 0;
+        }
+
+        #mlb-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: #334155 transparent;
+        }
+
+        .mlb-row {
+            display: flex;
+            flex-direction: column;
+            padding: 5px 4px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            border-left: 3px solid #334155;
+            background: rgba(30,41,59,0.7);
+            font-size: 10px;
+            line-height: 1.45;
+            transition: background 0.2s;
+        }
+        .mlb-row.mlb-you {
+            border-left-color: #10b981;
+            background: rgba(16,185,129,0.12);
+        }
+        .mlb-row.mlb-top1  { border-left-color: #f59e0b; }
+        .mlb-row.mlb-top2  { border-left-color: #94a3b8; }
+        .mlb-row.mlb-top3  { border-left-color: #b45309; }
+
+        .mlb-rank-name {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: bold;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mlb-badge {
+            font-size: 9px;
+            background: #1e293b;
+            border-radius: 3px;
+            padding: 0 3px;
+            color: #fbbf24;
+            flex-shrink: 0;
+        }
+        .mlb-stats {
+            color: #94a3b8;
+            margin-top: 2px;
+            font-size: 9.5px;
+        }
+        .mlb-score-val { color: #fbbf24; font-weight: bold; }
+    `;
+    const styleTag = document.createElement('style');
+    styleTag.textContent = css;
+    document.head.appendChild(styleTag);
+
+    // ─── 2. HTML VÀO #app ────────────────────────────────────────────
+    const appEl = document.getElementById('app');
+
+    const tabEl = document.createElement('div');
+    tabEl.id = 'mlb-tab';
+    tabEl.title = 'Bảng xếp hạng realtime';
+    tabEl.innerHTML = '▶';
+    appEl.appendChild(tabEl);
+
+    const panelEl = document.createElement('div');
+    panelEl.id = 'mlb-panel';
+    panelEl.innerHTML = `
+        <div id="mlb-title">🏆 XẾP HẠNG REALTIME</div>
+        <div id="mlb-list"></div>
+    `;
+    appEl.appendChild(panelEl);
+
+    // ─── 3. TOGGLE LOGIC ─────────────────────────────────────────────
+    let _mlbOpen = false;
+
+    tabEl.addEventListener('click', () => {
+        _mlbOpen = !_mlbOpen;
+        if (_mlbOpen) {
+            panelEl.classList.add('mlb-open');
+            tabEl.innerHTML = '◀';
+        } else {
+            panelEl.classList.remove('mlb-open');
+            tabEl.innerHTML = '▶';
+        }
+    });
+
+    // ─── 4. HÀM RENDER XẾP HẠNG ─────────────────────────────────────
+    const rankMedals = ['🥇', '🥈', '🥉'];
+
+    function _renderMiniLeaderboard() {
+        // Chỉ hiển thị khi đang chơi
+        const isPlaying = (gameState.status === 'PLAYING');
+        tabEl.classList.toggle('mlb-visible', isPlaying);
+        panelEl.classList.toggle('mlb-visible', isPlaying);
+        if (!isPlaying) return;
+
+        // Gộp player + bots thành danh sách chuẩn
+        const entries = [];
+
+        entries.push({
+            name: 'Bạn',
+            score: playerState.score,
+            roomCount: playerState.roomCount,
+            isPlayer: true
+        });
+
+        (gameState.bots || []).forEach(bot => {
+            entries.push({
+                name: bot.name || 'Bot',
+                score: bot.score || 0,
+                roomCount: bot.roomCount || 1,
+                isPlayer: false
+            });
+        });
+
+        // Sắp xếp theo điểm giảm dần, cùng điểm thì theo phòng
+        entries.sort((a, b) => b.score - a.score || b.roomCount - a.roomCount);
+
+        const listEl = document.getElementById('mlb-list');
+        if (!listEl) return;
+
+        // Chỉ hiển thị tối đa 8 người để không scroll nhiều
+        const topEntries = entries.slice(0, 8);
+
+        listEl.innerHTML = topEntries.map((e, idx) => {
+            const rankClass = idx === 0 ? 'mlb-top1' : idx === 1 ? 'mlb-top2' : idx === 2 ? 'mlb-top3' : '';
+            const youClass  = e.isPlayer ? 'mlb-you' : '';
+            const badge     = e.isPlayer ? '<span class="mlb-badge">BẠN</span>' : '';
+            const medal     = rankMedals[idx] || `<span style="color:#64748b;font-size:9px;">#${idx+1}</span>`;
+            const nameShort = e.name.length > 9 ? e.name.slice(0, 9) + '…' : e.name;
+
+            return `
+                <div class="mlb-row ${rankClass} ${youClass}">
+                    <div class="mlb-rank-name">
+                        ${medal}&nbsp;${nameShort}${badge}
+                    </div>
+                    <div class="mlb-stats">
+                        <span class="mlb-score-val">⭐${e.score}</span>
+                        &nbsp;·&nbsp;P${e.roomCount}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ─── 5. HOOK VÀO renderUIState ───────────────────────────────────
+    const _prevRenderUIState = window.renderUIState;
+    window.renderUIState = function() {
+        if (typeof _prevRenderUIState === 'function') _prevRenderUIState();
+        _renderMiniLeaderboard();
+    };
+
+    console.log('[Giai đoạn 40] Mini Leaderboard Realtime (tab ▶/◀ cạnh phải) tích hợp thành công.');
+})();
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 41 (40 là phần trước đó)
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // playerState → .hp, .score, .roomCount, .equipments, .activeBuffs, .character
+    // gameState   → .status
+    // isCurrentRoomBoss, activeQuestion
+    // characterDefs, equipmentDefs  (global Phase 2)
+    // handleAnswer, generateRoom, handleBossDefeat, applyBuffTick, renderUIState
+
+    // ─── 1. CSS: TOAST + IMMERSION EFFECTS ──────────────────────────
+    const _css41 = `
+        /* TOAST */
+        #toast-container-41 {
+            position: absolute;
+            bottom: 76px;
+            left: 10px;
+            z-index: 990;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 5px;
+            pointer-events: none;
+            max-width: 220px;
+        }
+        .toast41 {
+            padding: 6px 11px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #fff;
+            opacity: 0;
+            transform: translateX(-18px);
+            animation: t41In 0.22s ease forwards, t41Out 0.28s ease 2.2s forwards;
+            pointer-events: none;
+            line-height: 1.4;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+            border-left: 3px solid rgba(255,255,255,0.25);
+            word-break: break-word;
+        }
+        .t41-success { background: rgba(16,185,129,0.88); border-left-color: #34d399; }
+        .t41-damage  { background: rgba(217,4,41,0.88);   border-left-color: #ff6b6b; }
+        .t41-warn    { background: rgba(180,117,9,0.92);  border-left-color: #fcd34d; }
+        .t41-info    { background: rgba(15,52,96,0.92);   border-left-color: #60a5fa; }
+        .t41-equip   { background: rgba(109,40,217,0.90); border-left-color: #c084fc; }
+        .t41-heal    { background: rgba(5,150,105,0.88);  border-left-color: #6ee7b7; }
+
+        @keyframes t41In  { to { opacity: 1; transform: translateX(0); } }
+        @keyframes t41Out { to { opacity: 0; transform: translateX(-14px); } }
+
+        /* IMMERSION: HP LOW PULSE */
+        @keyframes hpDangerPulse {
+            0%,100% { box-shadow: inset 0 0 0 0 rgba(217,4,41,0), border-color: #334155; }
+            50%     { box-shadow: inset 0 0 20px 4px rgba(217,4,41,0.22); border-color: #ef4444; }
+        }
+        #game-center.imm-hp-danger {
+            animation: hpDangerPulse 1.05s ease-in-out infinite !important;
+            border-color: #7f1d1d !important;
+        }
+
+        /* IMMERSION: BOSS AURA */
+        @keyframes bossAuraPulse {
+            0%,100% { box-shadow: inset 0 0 0 0 rgba(239,68,68,0); }
+            50%     { box-shadow: inset 0 0 30px 8px rgba(239,68,68,0.18); }
+        }
+        #game-center.imm-boss-aura {
+            animation: bossAuraPulse 1.7s ease-in-out infinite !important;
+            border-color: #7f1d1d !important;
+        }
+
+        /* IMMERSION: CORRECT ANSWER FLASH */
+        @keyframes correctGlow {
+            0%   { box-shadow: inset 0 0 0 0 rgba(16,185,129,0); }
+            30%  { box-shadow: inset 0 0 30px 10px rgba(16,185,129,0.35); }
+            100% { box-shadow: inset 0 0 0 0 rgba(16,185,129,0); }
+        }
+        #game-center.imm-correct-flash {
+            animation: correctGlow 0.48s ease forwards !important;
+        }
+
+        /* IMMERSION: ROOM ENTER TRANSITION */
+        @keyframes roomEnter41 {
+            from { opacity: 0.3; transform: scale(0.975) translateY(5px); }
+            to   { opacity: 1;   transform: scale(1)     translateY(0);   }
+        }
+        #game-center.imm-room-enter {
+            animation: roomEnter41 0.3s ease forwards !important;
+        }
+
+        /* IMMERSION: AMBIENT PARTICLES */
+        .imm-particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            animation: immParticleDrift linear infinite;
+            z-index: 0;
+        }
+        @keyframes immParticleDrift {
+            0%   { transform: translateY(0)     scale(1);   opacity: 0;    }
+            12%  { opacity: 0.38; }
+            88%  { opacity: 0.12; }
+            100% { transform: translateY(-140px) scale(0.2); opacity: 0; }
+        }
+    `;
+    const _styleEl = document.createElement('style');
+    _styleEl.textContent = _css41;
+    document.head.appendChild(_styleEl);
+
+    // ─── 2. TOAST CONTAINER ──────────────────────────────────────────
+    const _appEl = document.getElementById('app');
+    const _toastBox = document.createElement('div');
+    _toastBox.id = 'toast-container-41';
+    _appEl.appendChild(_toastBox);
+
+    window.showToast = function(msg, type, duration) {
+        if (gameState.status !== 'PLAYING') return;
+        type     = type     || 'info';
+        duration = duration || 2500;
+
+        // Giới hạn 4 toast đồng thời
+        const existing = _toastBox.querySelectorAll('.toast41');
+        if (existing.length >= 4) existing[0].remove();
+
+        const el = document.createElement('div');
+        el.className = 'toast41 t41-' + type;
+        el.textContent = msg;
+        _toastBox.appendChild(el);
+        setTimeout(function() { if (el.parentNode) el.remove(); }, duration + 50);
+    };
+
+    // ─── 3. WEB AUDIO ENGINE (procedural, không thư viện ngoài) ─────
+    let _actx = null;
+    function _getACtx() {
+        if (!_actx) {
+            try {
+                _actx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch(e) { _actx = null; }
+        }
+        return _actx;
+    }
+
+    window.playGameSound = function(type) {
+        const ctx = _getACtx();
+        if (!ctx) return;
+        try {
+            if (ctx.state === 'suspended') ctx.resume();
+            const now = ctx.currentTime;
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            switch(type) {
+                case 'correct':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.linearRampToValueAtTime(880, now + 0.12);
+                    gain.gain.setValueAtTime(0.16, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                    osc.start(now); osc.stop(now + 0.38);
+                    break;
+                case 'wrong':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.linearRampToValueAtTime(100, now + 0.22);
+                    gain.gain.setValueAtTime(0.10, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+                    osc.start(now); osc.stop(now + 0.32);
+                    break;
+                case 'boss':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(90, now);
+                    osc.frequency.linearRampToValueAtTime(55, now + 0.55);
+                    gain.gain.setValueAtTime(0.09, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+                    osc.start(now); osc.stop(now + 0.65);
+                    break;
+                case 'room':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(320, now);
+                    osc.frequency.linearRampToValueAtTime(480, now + 0.07);
+                    osc.frequency.linearRampToValueAtTime(260, now + 0.2);
+                    gain.gain.setValueAtTime(0.06, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    osc.start(now); osc.stop(now + 0.22);
+                    break;
+                case 'equip':
+                    // Fanfare 3 nốt nhanh
+                    [0, 0.1, 0.2].forEach(function(t, i) {
+                        const o2  = ctx.createOscillator();
+                        const g2  = ctx.createGain();
+                        o2.connect(g2); g2.connect(ctx.destination);
+                        o2.type = 'triangle';
+                        o2.frequency.setValueAtTime([523, 659, 784][i], now + t);
+                        g2.gain.setValueAtTime(0.13, now + t);
+                        g2.gain.exponentialRampToValueAtTime(0.001, now + t + 0.18);
+                        o2.start(now + t); o2.stop(now + t + 0.18);
+                    });
+                    break;
+                case 'heal':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(620, now);
+                    osc.frequency.linearRampToValueAtTime(820, now + 0.14);
+                    gain.gain.setValueAtTime(0.07, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                    osc.start(now); osc.stop(now + 0.28);
+                    break;
+            }
+        } catch(e) {}
+    };
+
+    // ─── 4. AMBIENT PARTICLES ────────────────────────────────────────
+    function _spawnParticles() {
+        const gc = document.getElementById('game-center');
+        if (!gc || gc.querySelector('.imm-particle')) return;
+        if (getComputedStyle(gc).position === 'static') gc.style.position = 'relative';
+        const colors = [
+            'rgba(0,240,255,0.55)', 'rgba(251,191,36,0.45)',
+            'rgba(248,113,113,0.4)', 'rgba(167,243,208,0.5)',
+            'rgba(196,181,253,0.45)'
+        ];
+        for (let i = 0; i < 12; i++) {
+            const p = document.createElement('div');
+            p.className = 'imm-particle';
+            const sz = 2 + Math.random() * 3.5;
+            p.style.cssText =
+                'width:' + sz + 'px;' +
+                'height:' + sz + 'px;' +
+                'left:' + (4 + Math.random() * 92) + '%;' +
+                'bottom:' + (Math.random() * 25) + '%;' +
+                'background:' + colors[Math.floor(Math.random() * colors.length)] + ';' +
+                'animation-duration:' + (4.5 + Math.random() * 5.5) + 's;' +
+                'animation-delay:' + (Math.random() * 6) + 's;';
+            gc.appendChild(p);
+        }
+    }
+    setTimeout(_spawnParticles, 900);
+
+    // ─── 5. HELPER: thêm/xóa class immersion trên game-center ────────
+    function _gcClass(add, remove) {
+        const gc = document.getElementById('game-center');
+        if (!gc) return;
+        if (remove) remove.forEach(function(c) { gc.classList.remove(c); });
+        if (add)    { void gc.offsetWidth; gc.classList.add(add); }
+    }
+
+    // ─── 6. HOOK: handleAnswer — toast + sound + correct flash ────────
+    const _prevHA = window.handleAnswer;
+    window.handleAnswer = function(selectedIndex) {
+        // Snapshot trước khi xử lý (generateRoom bên trong sẽ thay đổi state)
+        const _prevScore = playerState.score;
+        const _prevHp    = playerState.hp;
+        const _wasBoss   = isCurrentRoomBoss;
+
+        // Resume AudioContext từ user gesture (button click)
+        if (_actx && _actx.state === 'suspended') _actx.resume();
+
+        if (typeof _prevHA === 'function') _prevHA(selectedIndex);
+
+        const scoreDelta = playerState.score - _prevScore;
+        const hpDelta    = playerState.hp    - _prevHp;
+
+        if (scoreDelta > 0) {
+            // Đúng
+            _gcClass('imm-correct-flash', ['imm-hp-danger', 'imm-boss-aura']);
+            setTimeout(function() {
+                _gcClass(null, ['imm-correct-flash']);
+                // Khôi phục aura trạng thái phòng mới
+                if (isCurrentRoomBoss) _gcClass('imm-boss-aura', null);
+            }, 520);
+            playGameSound('correct');
+            showToast('✅ Chính xác! +' + scoreDelta + ' điểm', 'success');
+            if (_wasBoss) showToast('💀 Boss bị hạ gục!', 'equip');
+        } else if (hpDelta < 0) {
+            // Sai
+            playGameSound('wrong');
+            showToast('💢 Sai! −' + Math.abs(hpDelta) + ' máu', 'damage');
+            // Cảnh báo máu nguy hiểm ngay lập tức
+            const baseHp = (playerState.character && characterDefs[playerState.character])
+                ? characterDefs[playerState.character].baseHp : 1500;
+            if (playerState.hp > 0 && playerState.hp <= baseHp * 0.28) {
+                showToast('⚠️ Máu cực thấp! Cẩn thận!', 'warn');
+            }
+        }
+    };
+
+    // ─── 7. HOOK: generateRoom — transition + aura + toast ───────────
+    const _prevGR = window.generateRoom;
+    window.generateRoom = function() {
+        const _isFirstRoom = (playerState.roomCount === 1);
+
+        if (typeof _prevGR === 'function') _prevGR();
+
+        // Room enter animation (sau khi nội dung đã render)
+        const gc = document.getElementById('game-center');
+        if (gc) {
+            gc.classList.remove('imm-room-enter');
+            void gc.offsetWidth;
+            gc.classList.add('imm-room-enter');
+        }
+
+        if (isCurrentRoomBoss) {
+            _gcClass('imm-boss-aura', ['imm-hp-danger']);
+            showToast('⚔️  Phòng Boss! Tập trung nào!', 'warn');
+            playGameSound('boss');
+        } else {
+            _gcClass(null, ['imm-boss-aura']);
+            playGameSound('room');
+            // Mốc mỗi 5 phòng (nhưng không phải phòng 1)
+            if (!_isFirstRoom && playerState.roomCount % 5 === 0) {
+                showToast('🚪 Phòng ' + playerState.roomCount + ' — tiếp tục tiến!', 'info');
+            }
+        }
+
+        if (_isFirstRoom) {
+            setTimeout(function() {
+                showToast('⚔️  Trận chiến bắt đầu! Chúc may mắn!', 'info');
+            }, 350);
+        }
+    };
+
+    // ─── 8. HOOK: handleBossDefeat — toast trang bị ──────────────────
+    const _prevHBD = window.handleBossDefeat;
+    window.handleBossDefeat = function() {
+        if (typeof _prevHBD === 'function') _prevHBD();
+        // Lấy trang bị vừa nhặt (phần tử cuối cùng trong mảng)
+        const lastEqId = playerState.equipments[playerState.equipments.length - 1];
+        if (lastEqId && typeof equipmentDefs !== 'undefined' && equipmentDefs[lastEqId]) {
+            showToast('🎁 Nhận trang bị: ' + equipmentDefs[lastEqId].name, 'equip');
+            playGameSound('equip');
+        }
+    };
+
+    // ─── 9. HOOK: applyBuffTick — toast hồi máu ──────────────────────
+    const _prevABT = window.applyBuffTick;
+    window.applyBuffTick = function() {
+        const _hp0 = playerState.hp;
+        if (typeof _prevABT === 'function') _prevABT();
+        const _healed = playerState.hp - _hp0;
+        if (_healed > 0) {
+            showToast('💚 Trái Tim Biển Cả +' + _healed + ' máu', 'heal');
+            playGameSound('heal');
+        }
+    };
+
+    // ─── 10. HOOK: renderUIState — HP danger pulse ───────────────────
+    const _prevRUI = window.renderUIState;
+    window.renderUIState = function() {
+        if (typeof _prevRUI === 'function') _prevRUI();
+        if (gameState.status !== 'PLAYING') return;
+
+        const gc = document.getElementById('game-center');
+        if (!gc) return;
+
+        const baseHp = (playerState.character && typeof characterDefs !== 'undefined'
+            && characterDefs[playerState.character])
+            ? characterDefs[playerState.character].baseHp : 1500;
+        const isDanger = (playerState.hp > 0 && playerState.hp <= baseHp * 0.28);
+
+        if (isCurrentRoomBoss) {
+            // Boss aura có ưu tiên, không hiện hp danger
+            gc.classList.remove('imm-hp-danger');
+        } else if (isDanger) {
+            if (!gc.classList.contains('imm-boss-aura')) {
+                gc.classList.add('imm-hp-danger');
+            }
+        } else {
+            gc.classList.remove('imm-hp-danger');
+        }
+    };
+
+    console.log('[Giai đoạn 41] Immersion Engine (particles, aura, flash, transition) + Toast Notification + Web Audio tích hợp thành công.');
+})();
+// ============================================ // 
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 41 (40 là phần trước đó)
+
+(function() {
+    // PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+    // p2p, playerState, gameState, questionBank, rankingState (Global objects)
+    // changeScreen, renderLobbyP2P, getValidPlayerName, characterDefs (Previous phases)
+
+    // ─── 1. CẤU HÌNH LIÊN MẠNG CHUYÊN SÂU CHỐNG CHẶN NAT (ICE / STUN SERVERS) ───
+    // Việc chơi chung máy (Local/Loopback) không bị lỗi nhưng chơi 2 máy mạng khác nhau bị treo là do
+    // tường lửa chặn kết nối P2P trực tiếp. Cấu hình này ép WebRTC tìm đường truyền xuyên NAT qua STUN của Google.
+    const robustPeerConfig = {
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                { urls: 'stun:stun.ekiga.net' },
+                { urls: 'stun:stun.ideasip.com' },
+                { urls: 'stun:stun.iptel.org' }
+            ],
+            sdpSemantics: 'unified-plan'
+        },
+        debug: 1 // Chỉ ghi nhận lỗi nghiêm trọng để tối ưu hóa hiệu năng
+    };
+
+    // ─── 2. VÁ LỖI 1: CHỦ PHÒNG (HOST) KHÔNG HIỆN MÃ PHÒNG HOẶC BỊ TREO MÀN HÌNH ───
+    window.hostCreateRoom = function () {
+        if (!playerState.character) { alert('Vui lòng chọn nhân vật trước!'); return; }
+        if (questionBank.length === 0) { alert('⚠️ Mày là Chủ phòng, mày phải vào [Cài đặt Admin] nhập câu hỏi trước khi tạo phòng!'); return; }
+
+        let myName = getValidPlayerName();
+
+        changeScreen('screen-matchmaking');
+        document.getElementById('matchmaking-status').innerText = 'Đang khởi tạo máy chủ phòng...';
+
+        const randomCode = Math.floor(1500 + Math.random() * 8499).toString();
+        p2p.roomId  = 'DTTT-' + randomCode;
+        p2p.isHost  = true;
+        
+        // Khởi tạo Peer với cấu hình băng thông xuyên NAT nâng cao
+        p2p.peer = new Peer(p2p.roomId, robustPeerConfig);
+
+        // Thiết lập bộ định thời giám sát (Watchdog) - Nếu quá 10 giây cloud sập không phản hồi thì tự động reset
+        let hostWatchdog = setTimeout(() => {
+            if (p2p.isHost && (!p2p.peer || !p2p.peer.open)) {
+                alert('⚠️ Máy chủ PeerJS Đám mây không phản hồi! Đang tự động thử lại mã phòng khác...');
+                try { p2p.peer.destroy(); } catch(e){}
+                hostCreateRoom();
+            }
+        }, 10000);
+
+        p2p.peer.on('open', (id) => {
+            clearTimeout(hostWatchdog);
+            gameState.status = 'LOBBY';
+            changeScreen('screen-lobby');
+            document.querySelector('#screen-lobby h2').innerHTML =
+                `Sảnh Chờ <br><span style="color:#fbbf24;font-size:24px;">MÃ PHÒNG: ${id}</span>`;
+            document.getElementById('btn-lobby-start').innerText = 'BẮT ĐẦU GAME (Ép tất cả vào trận)';
+
+            p2p.playersData = [{
+                peerId:    id,
+                name:      '👑 ' + myName,
+                character: playerState.character,
+                score: 0, roomCount: 1,
+                hp:        characterDefs[playerState.character].baseHp,
+                isDead:    false
+            }];
+            renderLobbyP2P();
+        });
+
+        p2p.peer.on('error', (err) => {
+            clearTimeout(hostWatchdog);
+            console.error('[Host Peer Error]', err);
+            if (err.type === 'id-taken') {
+                // Sửa lỗi trùng ID ngầm định khiến phòng bị treo
+                setTimeout(() => { hostCreateRoom(); }, 500);
+            } else {
+                alert('⚠️ Lỗi khởi tạo máy chủ: ' + err.message + ' (' + err.type + ')');
+                changeScreen('screen-home');
+            }
+        });
+
+        p2p.peer.on('connection', (conn) => {
+            p2p.connections.push(conn);
+
+            conn.on('error', (err) => { console.error('[Host Conn Error]', err); });
+
+            conn.on('data', (data) => {
+                if (data.type === 'JOIN') {
+                    let clientName = (data.name && data.name.trim()) ? data.name.trim() : 'Chiến Binh Bí Ẩn';
+                    p2p.playersData.push({
+                        peerId:    conn.peer,
+                        name:      clientName,
+                        character: data.character,
+                        score: 0, roomCount: 1,
+                        hp:        characterDefs[data.character].baseHp,
+                        isDead:    false
+                    });
+                    renderLobbyP2P();
+                    // Phát sóng trạng thái cập nhật phòng cho tất cả các máy con đang mở kết nối
+                    p2p.connections.forEach(c => { if(c.open) c.send({ type: 'LOBBY_UPDATE', players: p2p.playersData }); });
+                }
+                else if (data.type === 'SYNC_STATE') {
+                    let idx = p2p.playersData.findIndex(p => p.peerId === conn.peer);
+                    if (idx !== -1) {
+                        p2p.playersData[idx].score     = data.score;
+                        p2p.playersData[idx].roomCount  = data.roomCount;
+                        p2p.playersData[idx].hp         = data.hp;
+                        p2p.playersData[idx].isDead     = data.isDead;
+                        if (data.name && data.name.trim()) p2p.playersData[idx].name = data.name.trim();
+                    }
+                }
+            });
+
+            conn.on('close', () => {
+                p2p.playersData = p2p.playersData.filter(p => p.peerId !== conn.peer);
+                p2p.connections = p2p.connections.filter(c => c.peer  !== conn.peer);
+                renderLobbyP2P();
+                p2p.connections.forEach(c => { if(c.open) c.send({ type: 'LOBBY_UPDATE', players: p2p.playersData }); });
+            });
+        });
+    };
+
+    // Vá tương tự cho máy chủ phòng tự động của Admin (Observer Mode)
+    window.hostCreateRoomAsObserver = function () {
+        changeScreen('screen-matchmaking');
+        document.getElementById('matchmaking-status').innerText = 'Đang thiết lập Máy Chủ Trung Tâm...';
+
+        const randomCode = Math.floor(1500 + Math.random() * 8499).toString();
+        p2p.roomId  = 'DTTT-' + randomCode;
+        p2p.isHost  = true;
+        p2p.peer    = new Peer(p2p.roomId, robustPeerConfig);
+
+        let observerWatchdog = setTimeout(() => {
+            if (p2p.isHost && (!p2p.peer || !p2p.peer.open)) {
+                alert('⚠️ Máy Chủ Trung Tâm phản hồi chậm! Đang thử lại tiến trình...');
+                try { p2p.peer.destroy(); } catch(e){}
+                hostCreateRoomAsObserver();
+            }
+        }, 10000);
+
+        p2p.peer.on('open', (id) => {
+            clearTimeout(observerWatchdog);
+            gameState.status = 'LOBBY';
+            changeScreen('screen-lobby');
+            document.querySelector('#screen-lobby h2').innerHTML = `
+                <div class="lobby-glow-text">SẢNH CHỜ TRUNG TÂM</div>
+                <span style="color:#fbbf24;font-size:32px;letter-spacing:5px;">MÃ: ${id}</span>
+            `;
+            document.getElementById('btn-lobby-start').innerText = '🚀 PHÓNG TÀU (Bắt đầu giải đấu)';
+            document.getElementById('btn-lobby-start').style.backgroundColor = 'var(--btn-danger)';
+            p2p.playersData = [];
+            renderLobbyP2P();
+        });
+
+        p2p.peer.on('error', (err) => {
+            clearTimeout(observerWatchdog);
+            if (err.type === 'id-taken') {
+                setTimeout(() => { hostCreateRoomAsObserver(); }, 500);
+            } else {
+                alert('⚠️ Lỗi máy chủ điều phối Admin: ' + err.message);
+                changeScreen('screen-admin');
+            }
+        });
+
+        p2p.peer.on('connection', (conn) => {
+            p2p.connections.push(conn);
+            conn.on('error', (err) => { console.error(err); });
+            conn.on('data', (data) => {
+                if (data.type === 'JOIN') {
+                    let clientName = (data.name && data.name.trim()) ? data.name.trim() : 'Chiến Binh Bí Ẩn';
+                    p2p.playersData.push({
+                        peerId:    conn.peer,
+                        name:      clientName,
+                        character: data.character,
+                        score: 0, roomCount: 1,
+                        hp:        characterDefs[data.character].baseHp,
+                        isDead:    false
+                    });
+                    renderLobbyP2P();
+                    p2p.connections.forEach(c => { if(c.open) c.send({ type: 'LOBBY_UPDATE', players: p2p.playersData }); });
+                }
+                else if (data.type === 'SYNC_STATE') {
+                    let idx = p2p.playersData.findIndex(p => p.peerId === conn.peer);
+                    if (idx !== -1) {
+                        p2p.playersData[idx].score     = data.score;
+                        p2p.playersData[idx].roomCount  = data.roomCount;
+                        p2p.playersData[idx].hp         = data.hp;
+                        p2p.playersData[idx].isDead     = data.isDead;
+                        if (data.name && data.name.trim()) p2p.playersData[idx].name = data.name.trim();
+                    }
+                }
+            });
+            conn.on('close', () => {
+                p2p.playersData = p2p.playersData.filter(p => p.peerId !== conn.peer);
+                p2p.connections = p2p.connections.filter(c => c.peer  !== conn.peer);
+                renderLobbyP2P();
+                p2p.connections.forEach(c => { if(c.open) c.send({ type: 'LOBBY_UPDATE', players: p2p.playersData }); });
+            });
+        });
+    };
+
+
+    // ─── 3. VÁ LỖI 2: KHÁCH (CLIENT) NHẬP MÃ BỊ TREO, CHỦ PHÒNG KHÔNG THẤY VÀO ───
+    window.clientJoinRoom = function () {
+        if (!playerState.character) { alert('Vui lòng chọn nhân vật trước!'); return; }
+
+        let myName   = getValidPlayerName(); 
+        let roomCode = prompt('Nhập MÃ PHÒNG (Ví dụ: DTTT-1234):');
+        if (!roomCode) return;
+
+        changeScreen('screen-matchmaking');
+        document.getElementById('matchmaking-status').innerText = `Đang kết nối tới ${roomCode}...`;
+
+        // Khởi tạo mạng mạng con với ICE profile chống tường lửa chặn NAT
+        p2p.peer = new Peer(robustPeerConfig);
+
+        let clientPeerWatchdog = setTimeout(() => {
+            if (!p2p.peer || !p2p.peer.open) {
+                alert('⚠️ Đường truyền mạng không phản hồi lệnh kết xuất! Vui lòng thử lại.');
+                changeScreen('screen-home');
+            }
+        }, 10000);
+
+        p2p.peer.on('open', () => {
+            clearTimeout(clientPeerWatchdog);
+            
+            // Tiến hành mở luồng bắt tay (Handshake) dữ liệu WebRTC với chủ phòng
+            p2p.hostConn = p2p.peer.connect(roomCode.toUpperCase().trim(), { reliable: true });
+
+            // THIẾT LẬP WATCHDOG BẮT TAY P2P: Nếu quá 12 giây không thể xuyên qua NAT của 2 máy thì báo lỗi
+            let p2pHandshakeWatchdog = setTimeout(() => {
+                if (!p2p.hostConn || !p2p.hostConn.open) {
+                    alert('⚠️ LỖI KẾT NỐI KHÁC MẠNG (NAT Bị Chặn)!\nKhông thể truyền gói tin trực tiếp tới máy Chủ Phòng.\nHãy đảm bảo Chủ Phòng đang ở màn hình sảnh chờ hoặc cả hai thử đổi sang mạng di động (4G/5G) để phá rào NAT.');
+                    try { p2p.peer.destroy(); } catch(e){}
+                    changeScreen('screen-home');
+                }
+            }, 12000);
+
+            p2p.hostConn.on('open', () => {
+                clearTimeout(p2pHandshakeWatchdog); // Phá hủy mạch watchdog khi liên kết thông suốt thành công
+                p2p.hostConn.send({ type: 'JOIN', character: playerState.character, name: myName });
+
+                gameState.status = 'LOBBY';
+                changeScreen('screen-lobby');
+                document.querySelector('#screen-lobby h2').innerHTML =
+                    `Sảnh Chờ <br><span style="color:#10b981;font-size:18px;">Đang ở trong phòng: ${roomCode.toUpperCase().trim()}</span>`;
+                document.getElementById('btn-lobby-start').style.display = 'none';
+
+                if (!document.getElementById('waiting-msg')) {
+                    document.getElementById('btn-lobby-start').insertAdjacentHTML(
+                        'afterend',
+                        '<p id="waiting-msg" style="color:#fbbf24;">Đang chờ Chủ phòng bắt đầu game...</p>'
+                    );
+                }
+            });
+
+            p2p.hostConn.on('error', (err) => {
+                clearTimeout(p2pHandshakeWatchdog);
+                alert('⚠️ Đường truyền P2P bị lỗi gián đoạn: ' + err.message);
+                changeScreen('screen-home');
+            });
+
+            p2p.hostConn.on('data', (data) => {
+                if      (data.type === 'LOBBY_UPDATE')      { p2p.playersData = data.players; renderLobbyP2P(); }
+                else if (data.type === 'START_GAME')         { questionBank = data.qBank; startRealGame(); }
+                else if (data.type === 'LEADERBOARD_UPDATE') { rankingState = data.ranking; renderLeaderboard('score'); }
+            });
+
+            p2p.hostConn.on('close', () => {
+                alert('⚠️ Kết nối tới Máy Chủ Phòng bị ngắt đột ngột!');
+                window.location.reload();
+            });
+        });
+
+        p2p.peer.on('error', (err) => {
+            clearTimeout(clientPeerWatchdog);
+            alert('⚠️ Lỗi liên kết Client: ' + err.message);
+            changeScreen('screen-home');
+        });
+    };
+
+
+    // ─── 4. PHÒNG VỆ LUỒNG ĐỒNG BỘ TRONG TRẬN ───
+    const oldStartRealGamePhase41 = window.startRealGame;
+    window.startRealGame = function() {
+        if (typeof oldStartRealGamePhase41 === 'function') oldStartRealGamePhase41();
+        
+        // Sửa lỗi gửi gói tin lên kết nối đã chết gây crash luồng game realtime
+        if (p2p.isHost && p2p.syncInterval) {
+            clearInterval(p2p.syncInterval);
+            p2p.syncInterval = setInterval(() => {
+                if (gameState.status !== 'PLAYING') return;
+                let myData = p2p.playersData[0];
+                if (myData) {
+                    myData.score = playerState.score;
+                    myData.roomCount = playerState.roomCount;
+                    myData.hp = playerState.hp;
+                    myData.isDead = (playerState.hp <= 0);
+                }
+                p2p.connections.forEach(conn => {
+                    if (conn && conn.open) { // Phòng vệ defensive: Chỉ bắn dữ liệu khi kết nối thật sự mở
+                        conn.send({ type: 'LEADERBOARD_UPDATE', ranking: p2p.playersData });
+                    }
+                });
+                rankingState = p2p.playersData;
+            }, 1500);
+        }
+    };
+
+
+    // ─── 5. XÓA NÚT TẠO PHÒNG & THAY THẾ BẰNG NÚT ADMIN SANG TRỌNG ───
+    function runHomeButtonsRestyleEngine() {
+        const btnCreate = document.getElementById('btn-create-room');
+        const btnAdmin = document.getElementById('btn-goto-admin');
+        const btnJoin = document.getElementById('btn-join-room');
+
+        // 5.1 Loại bỏ vĩnh viễn nút Tạo phòng thủ công bị lỗi thời ra khỏi luồng render UI
+        if (btnCreate) {
+            btnCreate.remove();
+        }
+
+        // 5.2 Di chuyển nút [Cài đặt Admin] lên làm nút chính bên cạnh nút [Vào phòng]
+        if (btnAdmin && btnJoin && btnAdmin.nextElementSibling !== btnJoin && btnJoin.nextElementSibling !== btnAdmin) {
+            // Thiết lập phong cách UI đồng bộ, sang trọng cho ô cấu hình Admin thay thế
+            btnAdmin.style.fontSize = '16px';
+            btnAdmin.style.padding = '12px 20px';
+            btnAdmin.style.backgroundColor = '#8b5cf6'; // Đồng bộ màu tím thương hiệu của cụm Host hệ thống cũ
+            btnAdmin.style.color = '#fff';
+            btnAdmin.style.margin = '5px';
+            btnAdmin.style.borderRadius = 'var(--border-radius)';
+            btnAdmin.style.fontWeight = 'bold';
+            btnAdmin.style.cursor = 'pointer';
+            btnAdmin.style.display = 'inline-block';
+            btnAdmin.innerText = '⚙️ Cài đặt Admin (Tạo Phòng)';
+
+            // Đưa nút Admin lên vị trí đắc địa ngay trước nút Vào Phòng
+            btnJoin.parentNode.insertBefore(btnAdmin, btnJoin);
+            
+            // Xóa bỏ các thẻ <br> rác thừa để hàng nút nằm ngang đẹp mắt
+            let brElements = btnJoin.parentNode.querySelectorAll('br');
+            brElements.forEach(br => br.remove());
+        }
+    }
+
+    // Thiết lập tiến trình tuần tra (Polling loop) chạy ngầm liên tục để ép giao diện luôn giữ đúng cấu trúc nút mới
+    setInterval(runHomeButtonsRestyleEngine, 250);
+
+    console.log('[Giai đoạn 41] Khắc phục triệt để lỗi kết nối 2 máy khác mạng (Watchdog NAT Traversal Engine Active) và Tái cấu trúc nút Cài đặt Admin thành công.');
+})();
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 42 (41 là phần trước đó)
+(function() {
+    // Tăng cỡ chữ câu hỏi lên 1.5x (18px -> 27px) + in đậm
+    // Override inline style bằng !important để không bị ghi đè
+    var styleEl = document.createElement('style');
+    styleEl.id = 'style-phase42-question-size';
+    styleEl.textContent = [
+        '#ui-question-text {',
+        '    font-size: 27px !important;',
+        '    font-weight: bold !important;',
+        '    line-height: 1.6 !important;',
+        '}',
+    ].join('\n');
+    document.head.appendChild(styleEl);
+
+    console.log('[Giai đoạn 42] Cỡ chữ câu hỏi tăng lên 27px (1.5x) + in đậm thành công.');
+})();
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 43 (42 là phần trước đó)
+(function() {
+    /*
+     * PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+     *   gameState          (Phase 2)  — .status
+     *   playerState        (Phase 2)  — .hp, .score, .roomCount
+     *   changeScreen       (Phase 2 fn) — override: cached DOM list thay querySelectorAll
+     *   renderUIState      (chain: Phase20→40→41) — bọc RAF dedup, tránh multi-write/tick
+     *   generateRoom       (chain: Phase4→41) — hook question fade-in mỗi phòng
+     *   runHomeButtonsRestyleEngine  (Phase 41 block-2) — short-circuit sau khi setup xong
+     *
+     * KHÔNG tạo logic mới — chỉ tối ưu hoá hiệu năng rendering hiện có.
+     */
+
+    // ─── 1. CSS: GPU PROMOTION + SMOOTH TRANSITIONS ────────────────────
+    var _s43 = document.createElement('style');
+    _s43.id = 'style-smooth-43';
+    _s43.textContent =
+        '#game-center{will-change:box-shadow,border-color}\n' +
+        '.imm-particle,.toast41{will-change:transform,opacity}\n' +
+        '#ui-question-text{will-change:opacity,transform}\n' +
+        '@keyframes _sF43{' +
+            'from{opacity:0;transform:translateY(5px)}' +
+            'to{opacity:1;transform:translateY(0)}' +
+        '}\n' +
+        '.screen.active{animation:_sF43 0.18s ease forwards!important}\n' +
+        '.option-btn{\n' +
+        '  transform:translateZ(0);\n' +
+        '  transition:background-color 0.12s ease,transform 0.07s ease,' +
+                     'border-color 0.12s ease!important\n' +
+        '}\n' +
+        '.option-btn:active:not(:disabled){transform:scale(0.96) translateZ(0)!important}\n' +
+        '@keyframes _qF43{' +
+            'from{opacity:0;transform:translateY(5px)}' +
+            'to{opacity:1;transform:translateY(0)}' +
+        '}\n' +
+        '#ui-question-text.q43n{animation:_qF43 0.24s ease forwards!important}\n';
+    document.head.appendChild(_s43);
+
+    // ─── 2. DOM CACHE (build 1 lần tại load time) ──────────────────────
+    var _dc43 = {
+        screens: Array.from(document.querySelectorAll('.screen'))
+    };
+
+    // ─── 3. OVERRIDE changeScreen — cached list, bỏ querySelectorAll ───
+    window.changeScreen = function(screenId) {
+        _dc43.screens.forEach(function(s) { s.classList.remove('active'); });
+        var t = document.getElementById(screenId);
+        if (t) t.classList.add('active');
+    };
+
+    // ─── 4. SHORT-CIRCUIT runHomeButtonsRestyleEngine (Phase 41 block-2) ─
+    if (typeof window.runHomeButtonsRestyleEngine === 'function') {
+        var _origR43 = window.runHomeButtonsRestyleEngine;
+        var _r43done = false;
+        window.runHomeButtonsRestyleEngine = function() {
+            if (_r43done) return;
+            if (!document.getElementById('btn-create-room')) {
+                _r43done = true; return;
+            }
+            _origR43();
+            if (!document.getElementById('btn-create-room')) _r43done = true;
+        };
+        window.runHomeButtonsRestyleEngine();
+    }
+
+    // ─── 5. RAF-DEDUP renderUIState ────────────────────────────────────
+    var _rafUI43 = false;
+    var _prevRUI43 = window.renderUIState;
+    window.renderUIState = function() {
+        if (_rafUI43) return;
+        _rafUI43 = true;
+        requestAnimationFrame(function() {
+            _rafUI43 = false;
+            if (typeof _prevRUI43 === 'function') _prevRUI43();
+        });
+    };
+
+    // ─── 6. HOOK generateRoom — question text fade-in ──────────────────
+    var _prevGR43 = window.generateRoom;
+    window.generateRoom = function() {
+        var qt = document.getElementById('ui-question-text');
+        if (qt) qt.style.opacity = '0';
+        if (typeof _prevGR43 === 'function') _prevGR43();
+        requestAnimationFrame(function() {
+            if (!qt) return;
+            qt.style.opacity = '';
+            qt.classList.remove('q43n');
+            void qt.offsetWidth;
+            qt.classList.add('q43n');
+        });
+    };
+
+    console.log('[Giai đoạn 43] Perf Engine: GPU hints + screen-fade + RAF-dedup renderUIState + stop polling 250ms + question fade OK.');
+})();
+// ============================================ //
+// HỢP ĐỒNG TRÒ CHƠI v1 - GIAI ĐOẠN 44 (43 là phần trước đó)
+(function() {
+    /*
+     * PHỤ THUỘC TRẠNG THÁI TRUNG TÂM:
+     *   p2p              (Phase 7B) — .connections, .playersData, .syncInterval, .isHost, .peer
+     *   playerState      (Phase 2)  — .score, .roomCount, .hp, .isObserver
+     *   gameState        (Phase 2)  — .status
+     *   rankingState     (global)   — leaderboard array, ghi đè bởi host
+     *   startRealGame    (chain: Phase7B→41) — override sync loop adaptive
+     *   renderLeaderboard (Phase 7B→41) — override để hiển thị compressed data
+     *   broadcastLobbyState (Phase 7B) — override để clean dead connections
+     *   clientJoinRoom   (Phase 7B→41) — override thêm ROOM_FULL handler
+     *   changeScreen     (chain: Phase2→43) — override xử lý Observer sync + perf monitor
+     *
+     * MỤC TIÊU: Hỗ trợ ~100 người chơi mà không sập.
+     *   1. Adaptive sync interval — tăng khoảng cách khi nhiều người (1.5s → 3s)
+     *   2. Compressed leaderboard — chỉ gửi top 10 + vị trí của từng người (thay vì 100 entries × 99 conn)
+     *   3. Dead-connection cleanup — dọn trước mỗi broadcast
+     *   4. Room limit 100 người + ROOM_FULL message cho client
+     *   5. Perf monitor overlay cho Host
+     *   6. Observer sync loop replacement (Phase 8 click handler) qua changeScreen hook
+     *
+     * KHÔNG tạo logic game mới — chỉ tối ưu hoá tầng mạng/sync hiện có.
+     */
+
+    const MAX_PLAYERS_44 = 100;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 1. HELPER: ADAPTIVE SYNC INTERVAL
+    //    Khi nhiều người, tăng khoảng cách để giảm tải CPU/bandwidth của host
+    // ═══════════════════════════════════════════════════════════════════
+    function getSyncMs44() {
+        var n = (p2p.connections || []).length;
+        if (n <= 20) return 1500;
+        if (n <= 50) return 2000;
+        if (n <= 80) return 2500;
+        return 3000;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 2. HELPER: COMPRESSED LEADERBOARD
+    //    Gốc: gửi toàn bộ p2p.playersData (N entries) cho (N-1) connections
+    //         = N × (N-1) objects/cycle → với 100 người = 9900 objects/cycle
+    //    Fix: chỉ gửi top 10 + entry của chính người nhận (tối đa 11 objects/conn)
+    //         = 11 × 99 = 1089 objects/cycle (~9× nhẹ hơn)
+    // ═══════════════════════════════════════════════════════════════════
+    function buildCompressedRanking44(targetPeerId) {
+        var sorted = (p2p.playersData || []).slice().sort(function(a, b) { return b.score - a.score; });
+        var total  = sorted.length;
+
+        var top10 = sorted.slice(0, 10).map(function(p, i) {
+            return { peerId: p.peerId, name: p.name, score: p.score,
+                     roomCount: p.roomCount, hp: p.hp, isDead: p.isDead, _rank: i + 1 };
+        });
+
+        // Nếu bản thân không nằm trong top 10, thêm vào cuối kèm hạng thực tế
+        var inTop10 = top10.some(function(p) { return p.peerId === targetPeerId; });
+        if (!inTop10) {
+            var myIdx = sorted.findIndex(function(p) { return p.peerId === targetPeerId; });
+            if (myIdx !== -1) {
+                var m = sorted[myIdx];
+                top10.push({ peerId: m.peerId, name: m.name, score: m.score,
+                             roomCount: m.roomCount, hp: m.hp, isDead: m.isDead, _rank: myIdx + 1 });
+            }
+        }
+
+        top10._total = total; // metadata — không tính vào array.length nhưng vẫn truyền được
+        return top10;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3. OVERRIDE startRealGame
+    //    Thay setInterval cứng 1500ms của Phase 41 bằng setTimeout chain adaptive
+    //    + compressed leaderboard broadcast
+    // ═══════════════════════════════════════════════════════════════════
+    var _prevStart44 = window.startRealGame;
+    window.startRealGame = function() {
+        if (typeof _prevStart44 === 'function') _prevStart44(); // Gọi chain Phase7B→41 như cũ
+
+        if (!p2p.isHost) return; // Client không làm gì ở đây
+
+        // Dừng interval của Phase 41 (nếu có)
+        if (p2p.syncInterval) { clearInterval(p2p.syncInterval); p2p.syncInterval = null; }
+
+        // Bắt đầu adaptive sync loop bằng setTimeout chain
+        function doSync44() {
+            if (gameState.status !== 'PLAYING') {
+                p2p.syncInterval = setTimeout(doSync44, 2000);
+                return;
+            }
+
+            // Dọn kết nối đã chết trước khi broadcast
+            p2p.connections = (p2p.connections || []).filter(function(c) { return c && c.open; });
+
+            // Cập nhật data bản thân host (nếu host là người chơi, không phải Observer)
+            if (!playerState.isObserver && p2p.playersData && p2p.playersData[0]) {
+                p2p.playersData[0].score     = playerState.score;
+                p2p.playersData[0].roomCount = playerState.roomCount;
+                p2p.playersData[0].hp        = playerState.hp;
+                p2p.playersData[0].isDead    = (playerState.hp <= 0);
+            }
+
+            rankingState = p2p.playersData || [];
+
+            // Gửi compressed leaderboard cá nhân hoá cho từng client
+            p2p.connections.forEach(function(conn) {
+                if (!conn || !conn.open) return;
+                try {
+                    conn.send({
+                        type: 'LEADERBOARD_UPDATE',
+                        ranking: buildCompressedRanking44(conn.peer)
+                    });
+                } catch(e) { /* bỏ qua lỗi gửi vào conn đã hỏng */ }
+            });
+
+            p2p.syncInterval = setTimeout(doSync44, getSyncMs44());
+        }
+
+        p2p.syncInterval = setTimeout(doSync44, getSyncMs44());
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 4. OVERRIDE renderLeaderboard
+    //    Xử lý cả 2 format: compressed (có _rank, _total) và full (p2p.playersData gốc)
+    // ═══════════════════════════════════════════════════════════════════
+    var _prevRL44 = window.renderLeaderboard;
+    window.renderLeaderboard = function(sortBy) {
+        var list = document.getElementById('ranking-list');
+        if (!list || !rankingState || !rankingState.length) {
+            if (typeof _prevRL44 === 'function') _prevRL44(sortBy);
+            return;
+        }
+
+        var myPeerId  = (p2p.peer) ? p2p.peer.id : null;
+        var total     = rankingState._total || rankingState.length;
+        var hasRank   = rankingState[0] && (rankingState[0]._rank !== undefined);
+        var sorted    = rankingState.filter(function(p) { return p && p.peerId; }).slice();
+
+        if (sortBy === 'room') {
+            sorted.sort(function(a, b) { return b.roomCount - a.roomCount; });
+        } else {
+            // Compressed data: sort theo _rank; Full data: sort theo score
+            if (hasRank) {
+                sorted.sort(function(a, b) { return (a._rank || 999) - (b._rank || 999); });
+            } else {
+                sorted.sort(function(a, b) { return b.score - a.score; });
+            }
+        }
+
+        list.innerHTML = '';
+        sorted.forEach(function(ent, i) {
+            var li = document.createElement('li');
+            var isMe = (ent.peerId === myPeerId);
+            li.style.borderLeftColor = isMe ? '#10b981' : 'var(--text-color)';
+            if (isMe) li.style.backgroundColor = '#1e293b';
+
+            var displayRank = hasRank ? ent._rank : (i + 1);
+            var rankStr  = displayRank === 1 ? '🏆 TOP 1' : 'Top ' + displayRank;
+            var statusStr = ent.isDead
+                ? '<span style="color:#d90429;">(ĐÃ CHẾT)</span>'
+                : '<span style="color:#10b981;">(ĐANG SỐNG)</span>';
+
+            li.innerHTML =
+                '<strong>' + rankStr + ' — ' + ent.name + ' ' + (isMe ? '(BẠN) ' : '') + statusStr + '</strong><br>' +
+                '<span style="font-size:14px;color:#94a3b8;">Điểm: ' + ent.score +
+                ' | Phòng: ' + ent.roomCount + ' | HP: ' + ent.hp + '</span>';
+            list.appendChild(li);
+        });
+
+        // Ghi chú số người ở ngoài top 10
+        if (total > 10 && sorted.length === 10) {
+            var note = document.createElement('li');
+            note.style.cssText = 'color:#64748b;font-size:12px;text-align:center;border-left:4px solid #334155;';
+            note.innerText = '… và ' + (total - 10) + ' chiến binh khác. Tổng: ' + total + ' người.';
+            list.appendChild(note);
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 5. OVERRIDE broadcastLobbyState — dọn dead connections trước mỗi lần broadcast
+    // ═══════════════════════════════════════════════════════════════════
+    var _prevBLS44 = window.broadcastLobbyState;
+    window.broadcastLobbyState = function() {
+        p2p.connections = (p2p.connections || []).filter(function(c) { return c && c.open; });
+        if (typeof _prevBLS44 === 'function') _prevBLS44();
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 6. ROOM LIMIT: Gửi ROOM_FULL cho kết nối vượt quá giới hạn
+    //    Hook qua broadcastLobbyState vì là điểm tập trung mỗi khi có người join
+    // ═══════════════════════════════════════════════════════════════════
+    var _prevBLS44b = window.broadcastLobbyState;
+    window.broadcastLobbyState = function() {
+        // Nếu số người vượt MAX, gửi ROOM_FULL cho kết nối cuối và đẩy ra
+        if (p2p.connections && p2p.connections.length > MAX_PLAYERS_44) {
+            var excess = p2p.connections.splice(MAX_PLAYERS_44);
+            excess.forEach(function(conn) {
+                try {
+                    conn.send({ type: 'ROOM_FULL', message: 'Phòng đã đủ ' + MAX_PLAYERS_44 + ' chiến binh!' });
+                    setTimeout(function() { try { conn.close(); } catch(e) {} }, 400);
+                } catch(e) {}
+            });
+        }
+        if (typeof _prevBLS44b === 'function') _prevBLS44b();
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 7. OVERRIDE clientJoinRoom — thêm handler nhận ROOM_FULL từ host
+    // ═══════════════════════════════════════════════════════════════════
+    var _prevCJR44 = window.clientJoinRoom;
+    window.clientJoinRoom = function() {
+        if (typeof _prevCJR44 === 'function') _prevCJR44();
+
+        // hostConn được gán async bên trong _prevCJR44; poll đến khi có
+        function attachRoomFullHandler() {
+            if (!p2p.hostConn) { setTimeout(attachRoomFullHandler, 250); return; }
+            if (p2p.hostConn._rf44) return; // Đã gắn rồi
+            p2p.hostConn._rf44 = true;
+            p2p.hostConn.on('data', function(data) {
+                if (data.type === 'ROOM_FULL') {
+                    alert('⛔ ' + (data.message || 'Phòng đã đầy!'));
+                    try { if (p2p.peer) p2p.peer.destroy(); } catch(e) {}
+                    changeScreen('screen-home');
+                }
+            });
+        }
+        setTimeout(attachRoomFullHandler, 300);
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 8. OVERRIDE changeScreen
+    //    8a. Khi Observer vào screen-result: thay sync loop Phase 8 bằng adaptive version
+    //    8b. Khi vào screen-lobby / screen-result: tiêm Perf Monitor cho Host
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ─── 8a. Observer adaptive sync replacement ─────────────────────
+    function replaceObserverSync44() {
+        // Phase 8 đã set p2p.syncInterval ở đây; ta replace bằng adaptive version
+        if (p2p.syncInterval) { clearInterval(p2p.syncInterval); p2p.syncInterval = null; }
+
+        function doObsSync44() {
+            if (gameState.status !== 'PLAYING') {
+                p2p.syncInterval = setTimeout(doObsSync44, 2000);
+                return;
+            }
+
+            p2p.connections = (p2p.connections || []).filter(function(c) { return c && c.open; });
+            rankingState = (p2p.playersData || []).slice();
+
+            // Gửi compressed cho từng client cá nhân hoá
+            p2p.connections.forEach(function(conn) {
+                if (!conn || !conn.open) return;
+                try {
+                    conn.send({
+                        type: 'LEADERBOARD_UPDATE',
+                        ranking: buildCompressedRanking44(conn.peer)
+                    });
+                } catch(e) {}
+            });
+
+            // Render BXH cho Admin Observer
+            var tabRoom = document.getElementById('tab-room');
+            var currentTab = (tabRoom && tabRoom.style.backgroundColor === 'var(--btn-hover)') ? 'room' : 'score';
+            renderLeaderboard(currentTab);
+
+            p2p.syncInterval = setTimeout(doObsSync44, getSyncMs44());
+        }
+
+        p2p.syncInterval = setTimeout(doObsSync44, getSyncMs44());
+    }
+
+    // ─── 8b. Perf Monitor cho Host ───────────────────────────────────
+    function injectPerfMonitor44() {
+        if (!p2p.isHost) return;
+        if (document.getElementById('pm-44')) return;
+
+        var m = document.createElement('div');
+        m.id = 'pm-44';
+        m.style.cssText =
+            'position:fixed;bottom:10px;right:10px;background:rgba(15,23,42,0.88);' +
+            'color:#10b981;font-size:10px;padding:6px 11px;border-radius:6px;z-index:9999;' +
+            'font-family:monospace;border:1px solid #334155;pointer-events:none;line-height:1.7;';
+        document.body.appendChild(m);
+
+        setInterval(function() {
+            if (!p2p.isHost) { m.remove(); return; }
+            var alive   = (p2p.connections || []).filter(function(c) { return c && c.open; }).length;
+            var ms      = getSyncMs44();
+            var color   = alive > 80 ? '#ef4444' : alive > 50 ? '#fbbf24' : '#10b981';
+            var warning = alive >= MAX_PLAYERS_44 ? ' ⚠️MAX' : '';
+            m.style.color   = color;
+            m.innerHTML = '👑 HOST&nbsp; 🔗&nbsp;' + alive + '/' + MAX_PLAYERS_44 + warning + '<br>⏱&nbsp;Sync:&nbsp;' + ms + 'ms';
+        }, 1500);
+    }
+
+    // ─── Ghép 8a + 8b vào changeScreen ──────────────────────────────
+    var _prevCS44 = window.changeScreen;
+    window.changeScreen = function(screenId) {
+        if (typeof _prevCS44 === 'function') _prevCS44(screenId);
+
+        if (screenId === 'screen-result' && p2p.isHost && playerState.isObserver) {
+            // Phase 8 set syncInterval NGAY SAU changeScreen trong cùng callstack
+            // → delay 100ms để Phase 8 chạy xong rồi ta replace
+            setTimeout(replaceObserverSync44, 150);
+        }
+
+        if (screenId === 'screen-lobby' || screenId === 'screen-result') {
+            setTimeout(injectPerfMonitor44, 700);
+        }
+    };
+
+    console.log('[Giai đoạn 44] Perf-100 Engine: Adaptive sync (' + getSyncMs44() + 'ms base) | Compressed leaderboard (~9× nhẹ hơn) | Dead-conn cleanup | Room limit ' + MAX_PLAYERS_44 + ' | Observer sync replacement | Perf Monitor active.');
 })();
 
     </script>
